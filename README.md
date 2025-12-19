@@ -118,6 +118,7 @@ vlc-plylst search -q "genre:horror" --json
 | `rating:` | `rating:>7` or `rating:<5` | Minimum/maximum rating |
 | `runtime:` | `runtime:<120` | Runtime in minutes |
 | `genre:` | `genre:action` | Filter by genre |
+| `tag:` | `tag:watched` | Filter by tag |
 | `actor:` | `actor:cruise` | Filter by actor name |
 | `director:` | `director:nolan` | Filter by director |
 | `studio:` | `studio:warner` | Filter by studio |

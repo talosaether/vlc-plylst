@@ -193,6 +193,7 @@ def parse(
 @click.option("--year-max", type=int, help="Maximum year")
 @click.option("--rating", "-r", type=float, help="Minimum rating")
 @click.option("--genre", "-g", multiple=True, help="Filter by genre (can repeat)")
+@click.option("--tag", multiple=True, help="Filter by tag (can repeat)")
 @click.option("--actor", "-a", multiple=True, help="Filter by actor (can repeat)")
 @click.option("--director", "-d", multiple=True, help="Filter by director (can repeat)")
 @click.option("--query", "-q", help="Filter string (e.g., 'year:2024 genre:action rating:>7')")
@@ -208,6 +209,7 @@ def search(
     year_max: int | None,
     rating: float | None,
     genre: tuple[str, ...],
+    tag: tuple[str, ...],
     actor: tuple[str, ...],
     director: tuple[str, ...],
     query: str | None,
@@ -237,6 +239,8 @@ def search(
         filters.rating_min = rating
     if genre:
         filters.genres = list(genre)
+    if tag:
+        filters.tags = list(tag)
     if actor:
         filters.actors = list(actor)
     if director:
