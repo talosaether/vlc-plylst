@@ -197,7 +197,7 @@ def parse(
 @click.option("--actor", "-a", multiple=True, help="Filter by actor (can repeat)")
 @click.option("--director", "-d", multiple=True, help="Filter by director (can repeat)")
 @click.option("--query", "-q", help="Filter string (e.g., 'year:2024 genre:action rating:>7')")
-@click.option("--sort", "-s", type=click.Choice([s.value for s in SortOrder]), default="title_asc")
+@click.option("--sort", "-s", type=click.Choice([s.value for s in SortOrder]))
 @click.option("--limit", "-n", type=int, default=50, help="Max results")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
@@ -213,7 +213,7 @@ def search(
     actor: tuple[str, ...],
     director: tuple[str, ...],
     query: str | None,
-    sort: str,
+    sort: str | None,
     limit: int,
     as_json: bool,
 ) -> None:
@@ -245,8 +245,9 @@ def search(
         filters.actors = list(actor)
     if director:
         filters.directors = list(director)
+    if sort:
+        filters.sort = SortOrder(sort)
 
-    filters.sort = SortOrder(sort)
     filters.limit = limit
 
     query_builder = QueryBuilder(db)
