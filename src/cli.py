@@ -42,6 +42,8 @@ def cli(ctx: click.Context, db_path: str | None) -> None:
 @click.option("--no-hash", is_flag=True, help="Skip SHA256 hashing")
 @click.option("--full", is_flag=True, help="Full scan (rehash all files)")
 @click.option("--parse-nfo/--no-parse-nfo", default=True, help="Parse NFO files after scanning")
+@click.option("--min-size", default=100, help="Minimum file size in MB (default: 100, skips trailers/extras)")
+@click.option("--no-filter", is_flag=True, help="Disable filtering (include trailers, extras, small files)")
 @click.pass_context
 def scan(
     ctx: click.Context,
@@ -50,10 +52,12 @@ def scan(
     no_hash: bool,
     full: bool,
     parse_nfo: bool,
+    min_size: int,
+    no_filter: bool,
 ) -> None:
     """Scan a directory for video files and NFO metadata."""
     db = get_db(ctx.obj["db_path"])
-    scanner = Scanner(db)
+    scanner = Scanner(db, min_size_mb=0 if no_filter else min_size)
 
     with Progress(
         SpinnerColumn(),
@@ -85,6 +89,8 @@ def scan(
     console.print(f"  Files updated: {stats.files_updated}")
     console.print(f"  Files hashed: {stats.files_hashed}")
     console.print(f"  NFOs found: {stats.nfos_found}")
+    if stats.files_skipped:
+        console.print(f"  [dim]Files skipped (trailers/extras/small): {stats.files_skipped}[/dim]")
     if stats.errors:
         console.print(f"  [red]Errors: {stats.errors}[/red]")
 

@@ -28,6 +28,44 @@ VIDEO_EXTENSIONS: frozenset[str] = frozenset({
 # Hash buffer size (64KB)
 HASH_BUFFER_SIZE = 65536
 
+# Default minimum file size (100 MB) - skip smaller files as likely extras/trailers
+DEFAULT_MIN_SIZE_MB = 100
+
+# Directory names to skip (case-insensitive)
+SKIP_DIRECTORIES: frozenset[str] = frozenset({
+    "trailers", "trailer",
+    "extras", "extra",
+    "featurettes", "featurette",
+    "behind the scenes", "behindthescenes",
+    "deleted scenes", "deletedscenes",
+    "interviews", "interview",
+    "shorts", "short",
+    "samples", "sample",
+    "specials",
+    "bonus",
+    "promos", "promo",
+    "scenes",
+    "other",
+})
+
+# Filename patterns to skip (case-insensitive, checked as substrings)
+SKIP_FILENAME_PATTERNS: tuple[str, ...] = (
+    "-trailer",
+    ".trailer",
+    "_trailer",
+    "-sample",
+    ".sample",
+    "_sample",
+    "-short",
+    "-featurette",
+    "-interview",
+    "-extra",
+    "-deleted",
+    "-promo",
+    "-behindthescenes",
+    "-scene",
+)
+
 
 @dataclass
 class ScanStats:
@@ -37,6 +75,7 @@ class ScanStats:
     files_added: int = 0
     files_updated: int = 0
     files_hashed: int = 0
+    files_skipped: int = 0
     nfos_found: int = 0
     errors: int = 0
     bytes_scanned: int = 0
@@ -77,9 +116,11 @@ class Scanner:
         self,
         db: Database,
         progress_callback: ProgressCallback | None = None,
+        min_size_mb: int = DEFAULT_MIN_SIZE_MB,
     ):
         self.db = db
         self.progress_callback = progress_callback
+        self.min_size_bytes = min_size_mb * 1024 * 1024
         self._current_scan_version = 0
 
     def _report_progress(self, progress: ScanProgress) -> None:
@@ -90,6 +131,24 @@ class Scanner:
     def _is_video_file(self, path: Path) -> bool:
         """Check if path is a video file."""
         return path.suffix.lower() in VIDEO_EXTENSIONS
+
+    def _should_skip_directory(self, dir_name: str) -> bool:
+        """Check if directory should be skipped (trailers, extras, etc.)."""
+        return dir_name.lower() in SKIP_DIRECTORIES
+
+    def _should_skip_file(self, filename: str, file_size: int) -> bool:
+        """Check if file should be skipped based on name patterns or size."""
+        # Skip small files
+        if file_size < self.min_size_bytes:
+            return True
+
+        # Skip files matching trailer/extra patterns
+        filename_lower = filename.lower()
+        for pattern in SKIP_FILENAME_PATTERNS:
+            if pattern in filename_lower:
+                return True
+
+        return False
 
     def _get_nfo_path(self, video_path: Path) -> Path | None:
         """Find NFO file for a video (same basename)."""
@@ -103,11 +162,19 @@ class Scanner:
         mtime = os.path.getmtime(path)
         return datetime.fromtimestamp(mtime).isoformat()
 
-    def discover_files(self, root_path: Path) -> list[FileInfo]:
-        """Discover all video files in a directory tree."""
-        files: list[FileInfo] = []
+    def discover_files(self, root_path: Path) -> tuple[list[FileInfo], int]:
+        """Discover all video files in a directory tree.
 
-        for dirpath, _dirnames, filenames in os.walk(root_path):
+        Returns:
+            Tuple of (list of FileInfo, count of skipped files)
+        """
+        files: list[FileInfo] = []
+        skipped = 0
+
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            # Filter out directories we want to skip (modifies in-place to prevent descent)
+            dirnames[:] = [d for d in dirnames if not self._should_skip_directory(d)]
+
             for filename in filenames:
                 file_path = Path(dirpath) / filename
 
@@ -116,6 +183,12 @@ class Scanner:
 
                 try:
                     stat = file_path.stat()
+
+                    # Skip small files and files matching skip patterns
+                    if self._should_skip_file(filename, stat.st_size):
+                        skipped += 1
+                        continue
+
                     relative = file_path.relative_to(root_path)
 
                     nfo_path = self._get_nfo_path(file_path)
@@ -137,7 +210,7 @@ class Scanner:
                 except OSError:
                     continue  # Skip files we can't stat
 
-        return files
+        return files, skipped
 
     def compute_sha256(self, file_path: Path) -> str:
         """Compute SHA256 hash of a file."""
@@ -191,7 +264,8 @@ class Scanner:
         # Phase 1: Discover files
         self._report_progress(ScanProgress(phase="scanning", current_file=str(root_path)))
 
-        files = self.discover_files(root_path)
+        files, skipped = self.discover_files(root_path)
+        stats.files_skipped = skipped
         total_bytes = sum(f.size for f in files)
 
         self._report_progress(
