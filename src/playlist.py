@@ -180,7 +180,8 @@ class PlaylistGenerator:
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
         format: str = "m3u8",
-    ) -> Path:
+        limit: int | None = None,
+    ) -> tuple[Path, int]:
         """
         Save playlist to file.
 
@@ -191,16 +192,24 @@ class PlaylistGenerator:
             query_results: Pre-fetched query results
             path_prefix: Optional path prefix substitution
             format: Output format ('m3u8' or 'xspf')
+            limit: Maximum number of items to include
 
         Returns:
-            Path to saved file
+            Tuple of (Path to saved file, number of items)
         """
         output_path = Path(output_path)
+
+        # Apply limit to playlist items if exporting by playlist_id
+        if playlist_id is not None and query_results is None and file_ids is None:
+            items = self.db.get_playlist_items(playlist_id)
+            if limit:
+                items = items[:limit]
+            query_results = items
 
         if format.lower() == "xspf":
             content = self.generate_xspf(
                 file_ids=file_ids,
-                playlist_id=playlist_id,
+                playlist_id=None,  # Already loaded above
                 query_results=query_results,
                 path_prefix=path_prefix,
                 playlist_title=output_path.stem,
@@ -208,13 +217,16 @@ class PlaylistGenerator:
         else:
             content = self.generate_m3u8(
                 file_ids=file_ids,
-                playlist_id=playlist_id,
+                playlist_id=None,  # Already loaded above
                 query_results=query_results,
                 path_prefix=path_prefix,
             )
 
         output_path.write_text(content, encoding="utf-8")
-        return output_path
+
+        # Count items
+        item_count = len(file_ids or query_results or [])
+        return output_path, item_count
 
     def create_smart_playlist(
         self,
@@ -274,7 +286,8 @@ class PlaylistGenerator:
         output_path: Path | str,
         path_prefix: str | None = None,
         format: str = "m3u8",
-    ) -> Path:
+        limit: int | None = None,
+    ) -> tuple[Path, int]:
         """
         Export a smart playlist by executing its query.
 
@@ -283,9 +296,10 @@ class PlaylistGenerator:
             output_path: Path to save playlist
             path_prefix: Optional path prefix substitution
             format: Output format
+            limit: Maximum number of items
 
         Returns:
-            Path to saved file
+            Tuple of (Path to saved file, number of items)
         """
         from .query import QueryBuilder, parse_filter_string
 
@@ -298,10 +312,14 @@ class PlaylistGenerator:
 
         if playlist["is_smart"] and playlist["smart_query"]:
             filters = parse_filter_string(playlist["smart_query"])
+            if limit:
+                filters.limit = limit
             query_builder = QueryBuilder(self.db)
             results = query_builder.execute(filters)
         else:
             results = self.db.get_playlist_items(playlist_id)
+            if limit:
+                results = results[:limit]
 
         return self.save_playlist(
             output_path=output_path,
