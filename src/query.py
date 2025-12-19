@@ -339,7 +339,11 @@ def parse_filter_string(filter_str: str) -> QueryFilter:
         if key == "title":
             filters.title = value
         elif key == "year":
-            if "-" in value:
+            if value.startswith(">"):
+                filters.year_min = int(value[1:])
+            elif value.startswith("<"):
+                filters.year_max = int(value[1:])
+            elif "-" in value:
                 # Range
                 start, end = value.split("-", 1)
                 if start:
