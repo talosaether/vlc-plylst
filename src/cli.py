@@ -614,6 +614,159 @@ def browse(ctx: click.Context, category: str | None) -> None:
 
 @cli.command()
 @click.pass_context
+def refresh(ctx: click.Context) -> None:
+    """Rescan all roots and parse changed NFOs.
+
+    Efficiently updates your library by:
+    - Scanning all known roots (skips unchanged directories)
+    - Parsing new or modified NFO files
+    """
+    db = get_db(ctx.obj["db_path"])
+
+    roots = db.list_roots()
+    if not roots:
+        console.print("[yellow]No library roots configured[/yellow]")
+        console.print("[dim]Use 'vlc-plylst scan <path>' to add a library[/dim]")
+        db.close()
+        return
+
+    total_scanned = 0
+    total_added = 0
+    total_updated = 0
+    total_nfos = 0
+    total_parsed = 0
+
+    scanner = Scanner(db)
+    parser = NFOParser(db)
+
+    # Scan each root
+    for root in roots:
+        console.print(f"\n[bold]Scanning: {root['label'] or root['root_path']}[/bold]")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Scanning...", total=None)
+
+            def on_progress(p: ScanProgress) -> None:
+                desc = f"[{p.phase}] {p.current_file[:50]}..." if len(p.current_file) > 50 else f"[{p.phase}] {p.current_file}"
+                if p.total_files:
+                    progress.update(task, description=desc, total=p.total_files, completed=p.files_processed)
+                else:
+                    progress.update(task, description=desc)
+
+            scanner.progress_callback = on_progress
+            stats = scanner.scan_root(root["root_path"], label=root["label"])
+
+        total_scanned += stats.files_scanned
+        total_added += stats.files_added
+        total_updated += stats.files_updated
+        total_nfos += stats.nfos_found
+
+    # Parse changed NFOs
+    files_to_parse = scanner.get_files_with_nfo()
+    if files_to_parse:
+        console.print(f"\n[bold]Parsing {len(files_to_parse)} NFO files...[/bold]")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Parsing...", total=len(files_to_parse))
+
+            for file_info in files_to_parse:
+                nfo_path = Path(file_info["root_path"]) / file_info["nfo_path"]
+                progress.update(task, description=f"Parsing {file_info['filename'][:40]}")
+
+                try:
+                    parser.parse_and_save(file_info["file_id"], nfo_path)
+                    total_parsed += 1
+                except Exception:
+                    pass  # Errors logged elsewhere
+
+                progress.advance(task)
+
+    # Summary
+    console.print(f"\n[green]Refresh complete![/green]")
+    console.print(f"  Roots scanned: {len(roots)}")
+    console.print(f"  Files found: {total_scanned}")
+    if total_added:
+        console.print(f"  New files: {total_added}")
+    if total_updated:
+        console.print(f"  Updated files: {total_updated}")
+    if total_parsed:
+        console.print(f"  NFOs parsed: {total_parsed}")
+
+    db.close()
+
+
+@cli.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without deleting")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def prune(ctx: click.Context, dry_run: bool, yes: bool) -> None:
+    """Remove files marked as missing and their metadata.
+
+    Files become "missing" when they're not found during a scan
+    (deleted from disk, moved, or filtered out by new scan settings).
+    """
+    db = get_db(ctx.obj["db_path"])
+
+    # Count missing files
+    row = db.fetchone("SELECT COUNT(*) as count FROM media_files WHERE is_missing = 1")
+    missing_count = row["count"] if row else 0
+
+    if missing_count == 0:
+        console.print("[green]No missing files to prune[/green]")
+        db.close()
+        return
+
+    console.print(f"Found [yellow]{missing_count}[/yellow] missing files")
+
+    if dry_run:
+        # Show some examples
+        examples = db.fetchall(
+            "SELECT filename, relative_path FROM media_files WHERE is_missing = 1 LIMIT 10"
+        )
+        console.print("\n[dim]Examples of files to be pruned:[/dim]")
+        for ex in examples:
+            console.print(f"  - {ex['relative_path']}")
+        if missing_count > 10:
+            console.print(f"  [dim]... and {missing_count - 10} more[/dim]")
+        console.print("\n[dim]Run without --dry-run to delete[/dim]")
+        db.close()
+        return
+
+    # Confirm unless -y
+    if not yes:
+        if not click.confirm(f"Delete {missing_count} files and their metadata?"):
+            console.print("[dim]Cancelled[/dim]")
+            db.close()
+            return
+
+    # Do the prune
+    counts = db.prune_missing_files()
+
+    console.print(f"\n[green]Pruned {counts['files']} files[/green]")
+    if counts.get("metadata", 0) > 0:
+        console.print(f"  Metadata records: {counts['metadata']}")
+    if counts.get("genre_links", 0) > 0:
+        console.print(f"  Genre links: {counts['genre_links']}")
+    if counts.get("actor_links", 0) > 0:
+        console.print(f"  Actor links: {counts['actor_links']}")
+
+    db.close()
+
+
+@cli.command()
+@click.pass_context
 def repl(ctx: click.Context) -> None:
     """Start interactive query mode."""
     from .repl import start_repl

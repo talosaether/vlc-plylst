@@ -117,6 +117,7 @@ class Scanner:
         self.progress_callback = progress_callback
         self.min_size_bytes = min_size_mb * 1024 * 1024
         self._current_scan_version = 0
+        self._last_scanned: datetime | None = None
 
     def _report_progress(self, progress: ScanProgress) -> None:
         """Report progress if callback is set."""
@@ -157,18 +158,35 @@ class Scanner:
         mtime = os.path.getmtime(path)
         return datetime.fromtimestamp(mtime).isoformat()
 
-    def discover_files(self, root_path: Path) -> tuple[list[FileInfo], int]:
+    def _should_skip_unchanged_dir(self, dirpath: str) -> bool:
+        """Check if directory can be skipped (unchanged since last scan)."""
+        if self._last_scanned is None:
+            return False
+        try:
+            dir_mtime = datetime.fromtimestamp(os.path.getmtime(dirpath))
+            return dir_mtime < self._last_scanned
+        except OSError:
+            return False
+
+    def discover_files(self, root_path: Path) -> tuple[list[FileInfo], int, int]:
         """Discover all video files in a directory tree.
 
         Returns:
-            Tuple of (list of FileInfo, count of skipped files)
+            Tuple of (list of FileInfo, count of skipped files, count of skipped dirs)
         """
         files: list[FileInfo] = []
         skipped = 0
+        skipped_dirs = 0
 
         for dirpath, dirnames, filenames in os.walk(root_path):
             # Filter out directories we want to skip (modifies in-place to prevent descent)
             dirnames[:] = [d for d in dirnames if not self._should_skip_directory(d)]
+
+            # Skip unchanged directories (but not the root itself)
+            if dirpath != str(root_path) and self._should_skip_unchanged_dir(dirpath):
+                skipped_dirs += 1
+                dirnames.clear()  # Don't descend
+                continue
 
             for filename in filenames:
                 file_path = Path(dirpath) / filename
@@ -205,7 +223,7 @@ class Scanner:
                 except OSError:
                     continue  # Skip files we can't stat
 
-        return files, skipped
+        return files, skipped, skipped_dirs
 
     def scan_root(
         self,
@@ -231,6 +249,13 @@ class Scanner:
         # Get or create root
         root_id = self.db.upsert_root(str(root_path), label)
 
+        # Get last scan time for incremental optimization
+        root_record = self.db.get_root(root_id)
+        if root_record and root_record["last_scanned"]:
+            self._last_scanned = datetime.fromisoformat(root_record["last_scanned"])
+        else:
+            self._last_scanned = None
+
         # Create scan session
         scan_id = self.db.create_scan_session(root_id, scan_type="index")
 
@@ -245,7 +270,7 @@ class Scanner:
         # Phase 1: Discover files
         self._report_progress(ScanProgress(phase="scanning", current_file=str(root_path)))
 
-        files, skipped = self.discover_files(root_path)
+        files, skipped, skipped_dirs = self.discover_files(root_path)
         stats.files_skipped = skipped
         total_bytes = sum(f.size for f in files)
 

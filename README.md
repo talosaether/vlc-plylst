@@ -35,13 +35,14 @@ python -m venv .venv && source .venv/bin/activate && pip install -e .
 ### Workflow
 
 ```bash
-# Step 1: Scan (vacuum) - indexes files, fast
+# Initial setup: scan and parse
 vlc-plylst scan /path/to/movies --label "Movies"
-
-# Step 2: Parse - extracts NFO metadata
 vlc-plylst parse
 
-# Step 3: Browse/Search/Export
+# Daily use: refresh all libraries (smart - skips unchanged dirs)
+vlc-plylst refresh
+
+# Browse/Search/Export
 vlc-plylst browse genres
 vlc-plylst search -q "genre:action year:>2020"
 vlc-plylst export playlist.m3u8 -q "genre:action"
@@ -155,11 +156,19 @@ vlc-plylst playlist list
 vlc-plylst playlist export 1 best2024.m3u8
 ```
 
-### Other commands
+### Maintenance commands
 
 ```bash
+# Refresh all libraries (rescan + reparse changed NFOs)
+vlc-plylst refresh
+
 # Library statistics
 vlc-plylst stats
+
+# Remove files marked as missing (filtered out, deleted, moved)
+vlc-plylst prune --dry-run    # Preview what would be deleted
+vlc-plylst prune              # Delete with confirmation
+vlc-plylst prune -y           # Delete without confirmation
 
 # Interactive mode
 vlc-plylst repl

@@ -681,6 +681,61 @@ class Database:
 
         return self.fetchall(sql, params)
 
+    def prune_missing_files(self) -> dict[str, int]:
+        """Delete files marked as missing and all their related data.
+
+        Returns dict with counts of deleted records by table.
+        """
+        # Get IDs of missing files
+        missing = self.fetchall(
+            "SELECT file_id FROM media_files WHERE is_missing = 1"
+        )
+        if not missing:
+            return {"files": 0}
+
+        file_ids = [row["file_id"] for row in missing]
+        placeholders = ", ".join("?" * len(file_ids))
+
+        counts = {}
+
+        # Delete from all related tables (order matters for foreign keys without CASCADE)
+        related_tables = [
+            ("media_metadata", "metadata"),
+            ("media_genres", "genre_links"),
+            ("media_actors", "actor_links"),
+            ("media_directors", "director_links"),
+            ("media_writers", "writer_links"),
+            ("media_tags", "tag_links"),
+            ("media_countries", "country_links"),
+            ("media_studios", "studio_links"),
+            ("external_ids", "external_ids"),
+            ("file_info", "file_info"),
+            ("audio_streams", "audio_streams"),
+            ("subtitle_streams", "subtitle_streams"),
+            ("custom_attributes", "custom_attrs"),
+            ("playlist_items", "playlist_items"),
+        ]
+
+        for table, key in related_tables:
+            try:
+                cursor = self.execute(
+                    f"DELETE FROM {table} WHERE file_id IN ({placeholders})",
+                    file_ids,
+                )
+                counts[key] = cursor.rowcount
+            except Exception:
+                counts[key] = 0
+
+        # Finally delete from media_files
+        cursor = self.execute(
+            f"DELETE FROM media_files WHERE file_id IN ({placeholders})",
+            file_ids,
+        )
+        counts["files"] = cursor.rowcount
+
+        self.conn.commit()
+        return counts
+
     def get_library_stats(self) -> dict[str, Any]:
         """Get library statistics."""
         stats = {}
