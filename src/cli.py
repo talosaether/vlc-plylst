@@ -398,6 +398,166 @@ def stats(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.argument("category", type=click.Choice(["genres", "actors", "directors", "studios", "countries", "tags", "years", "sets"]), required=False)
+@click.pass_context
+def browse(ctx: click.Context, category: str | None) -> None:
+    """Browse available genres, actors, directors, etc."""
+    db = get_db(ctx.obj["db_path"])
+
+    if category is None:
+        # Show summary of all categories
+        console.print("\n[bold]Available Categories[/bold]\n")
+
+        categories = [
+            ("genres", "SELECT COUNT(*) as c FROM genres"),
+            ("actors", "SELECT COUNT(DISTINCT person_id) as c FROM media_actors"),
+            ("directors", "SELECT COUNT(DISTINCT person_id) as c FROM media_directors"),
+            ("studios", "SELECT COUNT(*) as c FROM studios"),
+            ("countries", "SELECT COUNT(*) as c FROM countries"),
+            ("tags", "SELECT COUNT(*) as c FROM tags"),
+            ("years", "SELECT COUNT(DISTINCT year) as c FROM media_metadata WHERE year IS NOT NULL"),
+            ("sets", "SELECT COUNT(DISTINCT set_name) as c FROM media_metadata WHERE set_name IS NOT NULL"),
+        ]
+
+        table = Table()
+        table.add_column("Category")
+        table.add_column("Count", justify="right")
+        table.add_column("Command")
+
+        for name, sql in categories:
+            row = db.fetchone(sql)
+            count = row["c"] if row else 0
+            table.add_row(name, str(count), f"vlc-plylst browse {name}")
+
+        console.print(table)
+        console.print("\n[dim]Use 'vlc-plylst browse <category>' to see values[/dim]")
+
+    elif category == "genres":
+        rows = db.fetchall("""
+            SELECT g.name, COUNT(mg.file_id) as count
+            FROM genres g
+            LEFT JOIN media_genres mg ON g.genre_id = mg.genre_id
+            GROUP BY g.genre_id
+            ORDER BY count DESC
+        """)
+        table = Table(title="Genres")
+        table.add_column("Genre")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "actors":
+        rows = db.fetchall("""
+            SELECT p.name, COUNT(ma.file_id) as count
+            FROM people p
+            JOIN media_actors ma ON p.person_id = ma.person_id
+            GROUP BY p.person_id
+            ORDER BY count DESC
+            LIMIT 50
+        """)
+        table = Table(title="Top 50 Actors")
+        table.add_column("Actor")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "directors":
+        rows = db.fetchall("""
+            SELECT p.name, COUNT(md.file_id) as count
+            FROM people p
+            JOIN media_directors md ON p.person_id = md.person_id
+            GROUP BY p.person_id
+            ORDER BY count DESC
+            LIMIT 50
+        """)
+        table = Table(title="Top 50 Directors")
+        table.add_column("Director")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "studios":
+        rows = db.fetchall("""
+            SELECT s.name, COUNT(ms.file_id) as count
+            FROM studios s
+            LEFT JOIN media_studios ms ON s.studio_id = ms.studio_id
+            GROUP BY s.studio_id
+            ORDER BY count DESC
+        """)
+        table = Table(title="Studios")
+        table.add_column("Studio")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "countries":
+        rows = db.fetchall("""
+            SELECT c.name, COUNT(mc.file_id) as count
+            FROM countries c
+            LEFT JOIN media_countries mc ON c.country_id = mc.country_id
+            GROUP BY c.country_id
+            ORDER BY count DESC
+        """)
+        table = Table(title="Countries")
+        table.add_column("Country")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "tags":
+        rows = db.fetchall("""
+            SELECT t.name, COUNT(mt.file_id) as count
+            FROM tags t
+            LEFT JOIN media_tags mt ON t.tag_id = mt.tag_id
+            GROUP BY t.tag_id
+            ORDER BY count DESC
+        """)
+        table = Table(title="Tags")
+        table.add_column("Tag")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["name"], str(r["count"]))
+        console.print(table)
+
+    elif category == "years":
+        rows = db.fetchall("""
+            SELECT year, COUNT(*) as count
+            FROM media_metadata
+            WHERE year IS NOT NULL
+            GROUP BY year
+            ORDER BY year DESC
+        """)
+        table = Table(title="Years")
+        table.add_column("Year")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(str(r["year"]), str(r["count"]))
+        console.print(table)
+
+    elif category == "sets":
+        rows = db.fetchall("""
+            SELECT set_name, COUNT(*) as count
+            FROM media_metadata
+            WHERE set_name IS NOT NULL
+            GROUP BY set_name
+            ORDER BY count DESC
+        """)
+        table = Table(title="Collections/Sets")
+        table.add_column("Set Name")
+        table.add_column("Files", justify="right")
+        for r in rows:
+            table.add_row(r["set_name"], str(r["count"]))
+        console.print(table)
+
+    db.close()
+
+
+@cli.command()
 @click.pass_context
 def duplicates(ctx: click.Context) -> None:
     """Find duplicate files by hash."""
