@@ -39,9 +39,8 @@ def cli(ctx: click.Context, db_path: str | None) -> None:
 @cli.command()
 @click.argument("path", type=click.Path(exists=True, file_okay=False))
 @click.option("--label", "-l", help="Label for this library root")
-@click.option("--no-hash", is_flag=True, help="Skip SHA256 hashing")
+@click.option("--no-hash", is_flag=True, help="Skip SHA256 hashing (faster, index only)")
 @click.option("--full", is_flag=True, help="Full scan (rehash all files)")
-@click.option("--parse-nfo/--no-parse-nfo", default=True, help="Parse NFO files after scanning")
 @click.option("--min-size", default=100, help="Minimum file size in MB (default: 100, skips trailers/extras)")
 @click.option("--no-filter", is_flag=True, help="Disable filtering (include trailers, extras, small files)")
 @click.pass_context
@@ -51,11 +50,14 @@ def scan(
     label: str | None,
     no_hash: bool,
     full: bool,
-    parse_nfo: bool,
     min_size: int,
     no_filter: bool,
 ) -> None:
-    """Scan a directory for video files and NFO metadata."""
+    """Scan a directory for video files (vacuum phase).
+
+    Discovers video files, indexes them, and computes SHA256 hashes.
+    Run 'parse' command afterwards to extract NFO metadata.
+    """
     db = get_db(ctx.obj["db_path"])
     scanner = Scanner(db, min_size_mb=0 if no_filter else min_size)
 
@@ -94,39 +96,102 @@ def scan(
     if stats.errors:
         console.print(f"  [red]Errors: {stats.errors}[/red]")
 
-    # Parse NFO files
-    if parse_nfo:
-        root = db.get_root_by_path(str(Path(path).resolve()))
+    if stats.nfos_found > 0:
+        console.print(f"\n[dim]Run 'vlc-plylst parse' to extract metadata from NFO files[/dim]")
+
+    db.close()
+
+
+@cli.command()
+@click.option("--root", "-r", type=int, help="Only parse NFOs for specific root ID")
+@click.option("--force", "-f", is_flag=True, help="Re-parse all NFOs (not just new/changed)")
+@click.option("--limit", "-n", type=int, help="Limit number of NFOs to parse")
+@click.pass_context
+def parse(
+    ctx: click.Context,
+    root: int | None,
+    force: bool,
+    limit: int | None,
+) -> None:
+    """Parse NFO metadata for indexed files.
+
+    Extracts metadata (title, year, genres, actors, etc.) from NFO files
+    for videos that were previously indexed with 'scan'.
+    """
+    db = get_db(ctx.obj["db_path"])
+    scanner = Scanner(db)
+    parser = NFOParser(db)
+
+    # Get files with NFOs needing parsing
+    if force:
+        # Get all files with NFO paths
         if root:
-            files_with_nfo = scanner.get_files_with_nfo(root["root_id"])
-            if files_with_nfo:
-                console.print(f"\nParsing {len(files_with_nfo)} NFO files...")
-                parser = NFOParser(db)
+            files = db.fetchall(
+                """
+                SELECT mf.*, r.root_path
+                FROM media_files mf
+                JOIN roots r ON mf.root_id = r.root_id
+                WHERE mf.root_id = ? AND mf.nfo_path IS NOT NULL AND mf.is_missing = 0
+                """,
+                (root,),
+            )
+        else:
+            files = db.fetchall(
+                """
+                SELECT mf.*, r.root_path
+                FROM media_files mf
+                JOIN roots r ON mf.root_id = r.root_id
+                WHERE mf.nfo_path IS NOT NULL AND mf.is_missing = 0
+                """
+            )
+        files = [dict(f) for f in files]
+    else:
+        files = scanner.get_files_with_nfo(root)
 
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task("Parsing NFOs...", total=len(files_with_nfo))
+    if limit:
+        files = files[:limit]
 
-                    parsed = 0
-                    errors = 0
-                    for file_info in files_with_nfo:
-                        nfo_path = Path(file_info["root_path"]) / file_info["nfo_path"]
-                        try:
-                            parser.parse_and_save(file_info["file_id"], nfo_path)
-                            parsed += 1
-                        except Exception as e:
-                            console.print(f"[red]Error parsing {nfo_path}: {e}[/red]")
-                            errors += 1
-                        progress.advance(task)
+    if not files:
+        console.print("[yellow]No NFO files to parse[/yellow]")
+        if not force:
+            console.print("[dim]Use --force to re-parse all NFOs[/dim]")
+        db.close()
+        return
 
-                console.print(f"[green]Parsed {parsed} NFO files[/green]")
-                if errors:
-                    console.print(f"[red]{errors} errors[/red]")
+    console.print(f"Parsing {len(files)} NFO files...")
+
+    parsed = 0
+    errors = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Parsing...", total=len(files))
+
+        for file_info in files:
+            nfo_path = Path(file_info["root_path"]) / file_info["nfo_path"]
+            progress.update(task, description=f"Parsing {file_info['filename'][:40]}")
+
+            try:
+                parser.parse_and_save(file_info["file_id"], nfo_path)
+                parsed += 1
+            except Exception as e:
+                console.print(f"[red]Error: {file_info['filename']}: {e}[/red]")
+                errors += 1
+
+            progress.advance(task)
+
+    console.print(f"\n[green]Parsed {parsed} NFO files[/green]")
+    if errors:
+        console.print(f"[red]{errors} errors[/red]")
+
+    # Show summary
+    stats = db.get_library_stats()
+    console.print(f"\n[dim]Library now has: {stats['total_genres']} genres, {stats['total_people']} people[/dim]")
 
     db.close()
 
