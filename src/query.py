@@ -167,24 +167,24 @@ class QueryBuilder:
             conditions.append("v.runtime <= ?")
             params.append(filters.runtime_max)
 
-        # Genre filter
+        # Genre filter (case-insensitive)
         if filters.genres:
             joins.append("""
                 JOIN media_genres mg ON v.file_id = mg.file_id
                 JOIN genres g ON mg.genre_id = g.genre_id
             """)
-            placeholders = ", ".join("?" * len(filters.genres))
-            conditions.append(f"g.name IN ({placeholders})")
+            genre_conditions = " OR ".join("LOWER(g.name) = LOWER(?)" for _ in filters.genres)
+            conditions.append(f"({genre_conditions})")
             params.extend(filters.genres)
 
-        # Tag filter
+        # Tag filter (case-insensitive)
         if filters.tags:
             joins.append("""
                 JOIN media_tags mt ON v.file_id = mt.file_id
                 JOIN tags t ON mt.tag_id = t.tag_id
             """)
-            placeholders = ", ".join("?" * len(filters.tags))
-            conditions.append(f"t.name IN ({placeholders})")
+            tag_conditions = " OR ".join("LOWER(t.name) = LOWER(?)" for _ in filters.tags)
+            conditions.append(f"({tag_conditions})")
             params.extend(filters.tags)
 
         # Actor filter
@@ -207,25 +207,25 @@ class QueryBuilder:
             conditions.append(f"({director_conditions})")
             params.extend([f"%{d}%" for d in filters.directors])
 
-        # Studio filter
+        # Studio filter (case-insensitive)
         if filters.studios:
             joins.append("""
                 JOIN media_studios ms ON v.file_id = ms.file_id
                 JOIN studios s ON ms.studio_id = s.studio_id
             """)
-            placeholders = ", ".join("?" * len(filters.studios))
-            conditions.append(f"s.name IN ({placeholders})")
-            params.extend(filters.studios)
+            studio_conditions = " OR ".join("LOWER(s.name) LIKE LOWER(?)" for _ in filters.studios)
+            conditions.append(f"({studio_conditions})")
+            params.extend([f"%{s}%" for s in filters.studios])
 
-        # Country filter
+        # Country filter (case-insensitive)
         if filters.countries:
             joins.append("""
                 JOIN media_countries mc ON v.file_id = mc.file_id
                 JOIN countries c ON mc.country_id = c.country_id
             """)
-            placeholders = ", ".join("?" * len(filters.countries))
-            conditions.append(f"c.name IN ({placeholders})")
-            params.extend(filters.countries)
+            country_conditions = " OR ".join("LOWER(c.name) LIKE LOWER(?)" for _ in filters.countries)
+            conditions.append(f"({country_conditions})")
+            params.extend([f"%{c}%" for c in filters.countries])
 
         # Set/collection filter
         if filters.set_name:
