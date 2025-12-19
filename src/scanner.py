@@ -1,10 +1,9 @@
-"""File system scanner with hashing and NFO detection."""
+"""File system scanner with NFO detection."""
 
 from __future__ import annotations
 
-import hashlib
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -24,9 +23,6 @@ VIDEO_EXTENSIONS: frozenset[str] = frozenset({
     ".ogv", ".ogg", ".3gp", ".3g2", ".f4v", ".divx", ".xvid",
     ".rm", ".rmvb", ".asf", ".dv", ".mxf",
 })
-
-# Hash buffer size (64KB)
-HASH_BUFFER_SIZE = 65536
 
 # Default minimum file size (100 MB) - skip smaller files as likely extras/trailers
 DEFAULT_MIN_SIZE_MB = 100
@@ -74,7 +70,6 @@ class ScanStats:
     files_scanned: int = 0
     files_added: int = 0
     files_updated: int = 0
-    files_hashed: int = 0
     files_skipped: int = 0
     nfos_found: int = 0
     errors: int = 0
@@ -212,20 +207,10 @@ class Scanner:
 
         return files, skipped
 
-    def compute_sha256(self, file_path: Path) -> str:
-        """Compute SHA256 hash of a file."""
-        sha256 = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            while chunk := f.read(HASH_BUFFER_SIZE):
-                sha256.update(chunk)
-        return sha256.hexdigest()
-
     def scan_root(
         self,
         root_path: str | Path,
         label: str | None = None,
-        compute_hashes: bool = True,
-        incremental: bool = True,
     ) -> ScanStats:
         """
         Scan a root directory for video files.
@@ -233,8 +218,6 @@ class Scanner:
         Args:
             root_path: Path to scan
             label: Optional label for this root
-            compute_hashes: Whether to compute file hashes
-            incremental: Only hash new/changed files if True
 
         Returns:
             ScanStats with scan results
@@ -249,9 +232,7 @@ class Scanner:
         root_id = self.db.upsert_root(str(root_path), label)
 
         # Create scan session
-        scan_id = self.db.create_scan_session(
-            root_id, scan_type="incremental" if incremental else "full"
-        )
+        scan_id = self.db.create_scan_session(root_id, scan_type="index")
 
         # Increment scan version for orphan detection
         self._current_scan_version = (
@@ -323,40 +304,7 @@ class Scanner:
                 )
                 stats.errors += 1
 
-        # Phase 3: Compute hashes for new/changed files
-        if compute_hashes:
-            files_to_hash = self.db.get_files_needing_hash(root_id, limit=10000)
-
-            if not incremental:
-                # Full scan - hash all files
-                files_to_hash = self.db.fetchall(
-                    "SELECT * FROM media_files WHERE root_id = ? AND is_missing = 0",
-                    (root_id,),
-                )
-
-            for i, row in enumerate(files_to_hash):
-                file_path = root_path / row["relative_path"]
-
-                self._report_progress(
-                    ScanProgress(
-                        phase="hashing",
-                        current_file=row["relative_path"],
-                        files_processed=i,
-                        total_files=len(files_to_hash),
-                    )
-                )
-
-                try:
-                    file_hash = self.compute_sha256(file_path)
-                    self.db.update_file_hash(row["file_id"], file_hash)
-                    stats.files_hashed += 1
-                except Exception as e:
-                    self.db.log_scan_error(
-                        scan_id, row["relative_path"], "hash", str(e)
-                    )
-                    stats.errors += 1
-
-        # Phase 4: Mark missing files
+        # Phase 3: Mark missing files
         missing_count = self.db.mark_files_missing(root_id, self._current_scan_version)
 
         # Update scan session

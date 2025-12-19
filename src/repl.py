@@ -51,7 +51,6 @@ HELP_TEXT = """
 
 [cyan]Other Commands:[/cyan]
   stats               Show library statistics
-  duplicates          Find duplicate files
   roots               List library roots
   help                Show this help
   quit / exit         Exit REPL
@@ -307,25 +306,6 @@ class MediaREPL:
 
         console.print(table)
 
-    def cmd_duplicates(self, args: str) -> None:
-        """Find duplicate files."""
-        dups = self.db.find_duplicates()
-        if not dups:
-            console.print("[green]No duplicates found[/green]")
-            return
-
-        console.print(f"[yellow]{len(dups)} duplicate groups[/yellow]\n")
-        for dup in dups[:10]:  # Show first 10
-            file_ids = [int(x) for x in dup["file_ids"].split(",")]
-            console.print(f"[bold]Hash: {dup['sha256_hash'][:16]}... ({dup['copy_count']} copies)[/bold]")
-            for fid in file_ids:
-                row = self.db.fetchone(
-                    "SELECT full_path FROM v_media_full WHERE file_id = ?", (fid,)
-                )
-                if row:
-                    console.print(f"  - {row['full_path']}")
-            console.print()
-
     def cmd_roots(self, args: str) -> None:
         """List library roots."""
         roots = self.db.list_roots()
@@ -413,8 +393,6 @@ class MediaREPL:
                 self.cmd_playlist(args)
             elif cmd == "stats":
                 self.cmd_stats(args)
-            elif cmd == "duplicates":
-                self.cmd_duplicates(args)
             elif cmd == "roots":
                 self.cmd_roots(args)
             else:

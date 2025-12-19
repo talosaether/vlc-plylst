@@ -39,8 +39,6 @@ def cli(ctx: click.Context, db_path: str | None) -> None:
 @cli.command()
 @click.argument("path", type=click.Path(exists=True, file_okay=False))
 @click.option("--label", "-l", help="Label for this library root")
-@click.option("--no-hash", is_flag=True, help="Skip SHA256 hashing (faster, index only)")
-@click.option("--full", is_flag=True, help="Full scan (rehash all files)")
 @click.option("--min-size", default=100, help="Minimum file size in MB (default: 100, skips trailers/extras)")
 @click.option("--no-filter", is_flag=True, help="Disable filtering (include trailers, extras, small files)")
 @click.pass_context
@@ -48,14 +46,12 @@ def scan(
     ctx: click.Context,
     path: str,
     label: str | None,
-    no_hash: bool,
-    full: bool,
     min_size: int,
     no_filter: bool,
 ) -> None:
     """Scan a directory for video files (vacuum phase).
 
-    Discovers video files, indexes them, and computes SHA256 hashes.
+    Discovers video files and indexes them.
     Run 'parse' command afterwards to extract NFO metadata.
     """
     db = get_db(ctx.obj["db_path"])
@@ -78,18 +74,12 @@ def scan(
                 progress.update(task, description=desc)
 
         scanner.progress_callback = on_progress
-        stats = scanner.scan_root(
-            path,
-            label=label,
-            compute_hashes=not no_hash,
-            incremental=not full,
-        )
+        stats = scanner.scan_root(path, label=label)
 
     console.print(f"\n[green]Scan complete![/green]")
     console.print(f"  Files scanned: {stats.files_scanned}")
     console.print(f"  Files added: {stats.files_added}")
     console.print(f"  Files updated: {stats.files_updated}")
-    console.print(f"  Files hashed: {stats.files_hashed}")
     console.print(f"  NFOs found: {stats.nfos_found}")
     if stats.files_skipped:
         console.print(f"  [dim]Files skipped (trailers/extras/small): {stats.files_skipped}[/dim]")
@@ -618,40 +608,6 @@ def browse(ctx: click.Context, category: str | None) -> None:
         for r in rows:
             table.add_row(r["set_name"], str(r["count"]))
         console.print(table)
-
-    db.close()
-
-
-@cli.command()
-@click.pass_context
-def duplicates(ctx: click.Context) -> None:
-    """Find duplicate files by hash."""
-    db = get_db(ctx.obj["db_path"])
-    dups = db.find_duplicates()
-
-    if not dups:
-        console.print("[green]No duplicates found[/green]")
-    else:
-        console.print(f"[yellow]Found {len(dups)} groups of duplicates[/yellow]\n")
-
-        for dup in dups:
-            file_ids = [int(x) for x in dup["file_ids"].split(",")]
-            console.print(f"[bold]Hash: {dup['sha256_hash'][:16]}... ({dup['copy_count']} copies)[/bold]")
-
-            for fid in file_ids:
-                row = db.fetchone(
-                    """
-                    SELECT r.root_path || '/' || mf.relative_path as path, mf.file_size
-                    FROM media_files mf
-                    JOIN roots r ON mf.root_id = r.root_id
-                    WHERE mf.file_id = ?
-                    """,
-                    (fid,),
-                )
-                if row:
-                    size_mb = row["file_size"] / (1024 * 1024)
-                    console.print(f"  - {row['path']} ({size_mb:.1f} MB)")
-            console.print()
 
     db.close()
 
