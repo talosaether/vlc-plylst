@@ -2,12 +2,12 @@
 
 Media asset vacuum and VLC playlist generator with Emby/Kodi NFO metadata support.
 
-Recursively scan video libraries, hash files for deduplication, parse NFO metadata into SQLite, and generate filtered VLC playlists.
+Recursively scan video libraries, parse NFO metadata into SQLite, and generate filtered VLC playlists.
 
 ## Features
 
-- **Recursive scanning** for 30+ video formats (mp4, mkv, avi, mov, etc.)
-- **SHA256 hashing** for duplicate detection
+- **Fast scanning** for 30+ video formats (mp4, mkv, avi, mov, etc.)
+- **Smart filtering** - auto-skips trailers, extras, samples, and small files
 - **NFO parsing** for Emby/Kodi metadata (title, year, plot, actors, genres, etc.)
 - **Custom attributes** - automatically discovers non-standard NFO tags
 - **Normalized schema** - junction tables for genres, actors, directors, studios, countries, tags
@@ -32,7 +32,22 @@ python -m venv .venv && source .venv/bin/activate && pip install -e .
 
 ## Usage
 
-### Scan a media library
+### Workflow
+
+```bash
+# Step 1: Scan (vacuum) - indexes files, fast
+vlc-plylst scan /path/to/movies --label "Movies"
+
+# Step 2: Parse - extracts NFO metadata
+vlc-plylst parse
+
+# Step 3: Browse/Search/Export
+vlc-plylst browse genres
+vlc-plylst search -q "genre:action year:>2020"
+vlc-plylst export playlist.m3u8 -q "genre:action"
+```
+
+### Scan (vacuum phase)
 
 ```bash
 vlc-plylst scan /path/to/movies --label "Movies"
@@ -41,9 +56,44 @@ vlc-plylst scan /path/to/tv --label "TV Shows"
 
 Options:
 - `--label, -l` - Friendly name for this library root
-- `--no-hash` - Skip SHA256 hashing (faster scan)
-- `--full` - Full rescan (rehash all files)
-- `--no-parse-nfo` - Skip NFO parsing
+- `--min-size N` - Minimum file size in MB (default: 100, skips trailers/extras)
+- `--no-filter` - Disable filtering (include trailers, extras, small files)
+
+By default, scan skips:
+- Files under 100MB
+- Directories named: trailers, extras, featurettes, samples, etc.
+- Files with patterns: -trailer, -sample, -featurette, etc.
+
+### Parse (metadata extraction)
+
+```bash
+# Parse new/changed NFOs
+vlc-plylst parse
+
+# Re-parse all NFOs
+vlc-plylst parse --force
+
+# Parse specific root only
+vlc-plylst parse --root 1
+
+# Test with limited files
+vlc-plylst parse --limit 10
+```
+
+### Browse available metadata
+
+```bash
+# See all categories
+vlc-plylst browse
+
+# List specific category
+vlc-plylst browse genres
+vlc-plylst browse actors
+vlc-plylst browse directors
+vlc-plylst browse studios
+vlc-plylst browse years
+vlc-plylst browse sets
+```
 
 ### Search media
 
@@ -111,9 +161,6 @@ vlc-plylst playlist export 1 best2024.m3u8
 # Library statistics
 vlc-plylst stats
 
-# Find duplicates by hash
-vlc-plylst duplicates
-
 # Interactive mode
 vlc-plylst repl
 ```
@@ -127,6 +174,7 @@ vlc-plylst> search genre:action year:>2020
 vlc-plylst> show 42
 vlc-plylst> export action.m3u8 genre:action rating:>7
 vlc-plylst> stats
+vlc-plylst> roots
 vlc-plylst> help
 ```
 
@@ -141,7 +189,7 @@ Override with: `vlc-plylst --db /path/to/custom.db <command>`
 | Table | Purpose |
 |-------|---------|
 | `roots` | Library root directories |
-| `media_files` | Video files with hash, paths, scan tracking |
+| `media_files` | Video files with paths, scan tracking |
 | `media_metadata` | Parsed NFO data (title, year, plot, etc.) |
 | `genres`, `media_genres` | Genre lookup + junction |
 | `people`, `media_actors` | People + actor roles |
