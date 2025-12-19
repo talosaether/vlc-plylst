@@ -293,7 +293,7 @@ def search(
 @click.option("--playlist-id", "-p", type=int, help="Export existing playlist by ID")
 @click.option("--path-prefix", help="Replace root paths with this prefix")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default="m3u8")
-@click.option("--qty", "-n", type=int, default=500, help="Maximum items in playlist (default: 500)")
+@click.option("--limit", "-n", type=int, default=500, help="Maximum items in playlist (default: 500)")
 @click.pass_context
 def export(
     ctx: click.Context,
@@ -303,7 +303,7 @@ def export(
     playlist_id: int | None,
     path_prefix: str | None,
     format: str,
-    qty: int,
+    limit: int,
 ) -> None:
     """Export a playlist to M3U8 or XSPF format."""
     db = get_db(ctx.obj["db_path"])
@@ -313,10 +313,10 @@ def export(
     query_results = None
 
     if ids:
-        file_ids = [int(i.strip()) for i in ids.split(",")][:qty]
+        file_ids = [int(i.strip()) for i in ids.split(",")][:limit]
     elif query:
         filters = parse_filter_string(query)
-        filters.limit = qty
+        filters.limit = limit
         query_builder = QueryBuilder(db)
         query_results = query_builder.execute(filters)
     elif playlist_id:
@@ -333,7 +333,7 @@ def export(
         query_results=query_results,
         path_prefix=path_prefix,
         format=format,
-        limit=qty,
+        limit=limit,
     )
 
     console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
