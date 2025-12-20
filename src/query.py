@@ -317,12 +317,21 @@ def parse_filter_string(filter_str: str) -> QueryFilter:
         "year:2024 genre:action rating:>7"
         "actor:cruise director:nolan"
         "title:inception year:2010-2020"
+        "genre:'science fiction' actor:'tom cruise'"
 
     Returns:
         QueryFilter populated from the filter string
     """
+    import shlex
+
     filters = QueryFilter()
-    parts = filter_str.split()
+
+    # Use shlex to handle quoted strings
+    try:
+        parts = shlex.split(filter_str)
+    except ValueError:
+        # Fall back to simple split if quotes are unbalanced
+        parts = filter_str.split()
 
     for part in parts:
         if ":" not in part:
