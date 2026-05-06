@@ -173,12 +173,19 @@ Any unrecognized key is treated as a custom-attribute filter (whatever non-stand
 # Export from query
 vlc-plylst export action_movies.m3u8 -q "genre:action year:>2020"
 
-# Export with path substitution (for network shares)
+# Replace the scan root with a network prefix
+# /mnt/movies/Action/Heat.mkv -> smb://nas/movies/Action/Heat.mkv
 vlc-plylst export movies.m3u8 -q "rating:>8" --path-prefix "smb://nas/movies"
+
+# Or prepend a prefix while keeping the original path intact
+# /mnt/movies/Action/Heat.mkv -> smb://nas/mnt/movies/Action/Heat.mkv
+vlc-plylst export movies.m3u8 -q "rating:>8" --prepend-path "smb://nas"
 
 # Export as XSPF (includes more metadata)
 vlc-plylst export movies.xspf -q "genre:scifi" --format xspf
 ```
+
+Use `--path-prefix` when the share exposes the *contents* of the scan root directly, and `--prepend-path` when the share exposes the *parent* (so the leading filesystem path is still meaningful on the target machine).
 
 ### Manage playlists
 

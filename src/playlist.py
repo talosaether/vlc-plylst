@@ -31,26 +31,38 @@ class PlaylistGenerator:
             return f"{title} ({row['year']})"
         return title
 
+    def _resolve_path(
+        self,
+        full_path: str,
+        relative_path: str,
+        path_prefix: str | None,
+        prepend_path: str | None,
+    ) -> str:
+        """Apply path-prefix or prepend-path transformation."""
+        if path_prefix:
+            return f"{path_prefix.rstrip('/')}/{relative_path}"
+        if prepend_path:
+            # Keep the full original path; prepend the new prefix.
+            sep = "" if full_path.startswith("/") else "/"
+            return f"{prepend_path.rstrip('/')}{sep}{full_path}"
+        return full_path
+
     def generate_m3u8(
         self,
         file_ids: list[int] | None = None,
         playlist_id: int | None = None,
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
+        prepend_path: str | None = None,
         include_metadata: bool = True,
     ) -> str:
         """
         Generate M3U8 playlist content.
 
-        Args:
-            file_ids: List of file IDs to include
-            playlist_id: ID of saved playlist to export
-            query_results: Pre-fetched query results (rows from v_media_full)
-            path_prefix: Optional prefix to prepend to all paths
-            include_metadata: Include EXTINF metadata lines
-
-        Returns:
-            M3U8 playlist as string
+        path_prefix replaces the scan root with a new prefix (e.g. an SMB share
+        that exposes the root directly). prepend_path keeps the original
+        absolute path intact and just prepends the new prefix (e.g. an SMB
+        share that exposes the parent of the scan root). Pass at most one.
         """
         lines = ["#EXTM3U"]
 
@@ -71,14 +83,9 @@ class PlaylistGenerator:
             return "#EXTM3U\n"
 
         for row in items:
-            full_path = row["full_path"]
-
-            # Apply path prefix substitution if specified
-            if path_prefix:
-                # Replace root path with prefix
-                root_path = row["root_path"]
-                relative = row["relative_path"]
-                full_path = f"{path_prefix.rstrip('/')}/{relative}"
+            full_path = self._resolve_path(
+                row["full_path"], row["relative_path"], path_prefix, prepend_path
+            )
 
             if include_metadata:
                 duration = self._format_duration(row["runtime"])
@@ -95,20 +102,13 @@ class PlaylistGenerator:
         playlist_id: int | None = None,
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
+        prepend_path: str | None = None,
         playlist_title: str = "VLC Playlist",
     ) -> str:
         """
         Generate XSPF (XML) playlist content.
 
-        Args:
-            file_ids: List of file IDs to include
-            playlist_id: ID of saved playlist to export
-            query_results: Pre-fetched query results
-            path_prefix: Optional prefix to prepend to all paths
-            playlist_title: Title for the playlist
-
-        Returns:
-            XSPF playlist as string
+        See generate_m3u8 for path_prefix vs prepend_path semantics.
         """
         # Get items
         if query_results is not None:
@@ -133,10 +133,9 @@ class PlaylistGenerator:
         ]
 
         for row in items:
-            full_path = row["full_path"]
-            if path_prefix:
-                relative = row["relative_path"]
-                full_path = f"{path_prefix.rstrip('/')}/{relative}"
+            full_path = self._resolve_path(
+                row["full_path"], row["relative_path"], path_prefix, prepend_path
+            )
 
             title = self._get_display_title(row)
             duration_ms = (row["runtime"] or 0) * 60 * 1000
@@ -186,24 +185,12 @@ class PlaylistGenerator:
         playlist_id: int | None = None,
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
+        prepend_path: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
-        """
-        Save playlist to file.
-
-        Args:
-            output_path: Path to save playlist
-            file_ids: List of file IDs to include
-            playlist_id: ID of saved playlist to export
-            query_results: Pre-fetched query results
-            path_prefix: Optional path prefix substitution
-            format: Output format ('m3u8' or 'xspf')
-            limit: Maximum number of items to include
-
-        Returns:
-            Tuple of (Path to saved file, number of items)
-        """
+        """Save playlist to file. See generate_m3u8 for path_prefix /
+        prepend_path semantics."""
         output_path = Path(output_path)
 
         # Apply limit to playlist items if exporting by playlist_id
@@ -219,6 +206,7 @@ class PlaylistGenerator:
                 playlist_id=None,  # Already loaded above
                 query_results=query_results,
                 path_prefix=path_prefix,
+                prepend_path=prepend_path,
                 playlist_title=output_path.stem,
             )
         else:
@@ -227,6 +215,7 @@ class PlaylistGenerator:
                 playlist_id=None,  # Already loaded above
                 query_results=query_results,
                 path_prefix=path_prefix,
+                prepend_path=prepend_path,
             )
 
         output_path.write_text(content, encoding="utf-8")
@@ -292,22 +281,12 @@ class PlaylistGenerator:
         playlist_id: int,
         output_path: Path | str,
         path_prefix: str | None = None,
+        prepend_path: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
-        """
-        Export a smart playlist by executing its query.
-
-        Args:
-            playlist_id: ID of smart playlist
-            output_path: Path to save playlist
-            path_prefix: Optional path prefix substitution
-            format: Output format
-            limit: Maximum number of items
-
-        Returns:
-            Tuple of (Path to saved file, number of items)
-        """
+        """Export a smart playlist by re-running its query (or load static
+        items). See generate_m3u8 for path_prefix / prepend_path semantics."""
         from .query import QueryBuilder, parse_filter_string
 
         playlist = self.db.fetchone(
@@ -332,5 +311,6 @@ class PlaylistGenerator:
             output_path=output_path,
             query_results=results,
             path_prefix=path_prefix,
+            prepend_path=prepend_path,
             format=format,
         )
