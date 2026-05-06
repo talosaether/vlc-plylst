@@ -148,7 +148,6 @@ vlc-plylst search -q "genre:horror" --json
 | Filter | Example | Description |
 |--------|---------|-------------|
 | `title:` | `title:inception` | Search by title |
-| `suffix:` | `suffix:-trailer`, `suffix:-short-` | Filename pattern before extension (matches all extensions) |
 | `year:` | `year:2024`, `year:>2020`, `year:2020-2024` | Exact, min, or range |
 | `rating:` | `rating:>7` or `rating:<5` | Minimum/maximum rating |
 | `runtime:` | `runtime:<120` | Runtime in minutes |
@@ -190,13 +189,24 @@ vlc-plylst export movies.m3u8 -q "rating:>8" --prepend-path "smb://nas"
 vlc-plylst export movies.xspf -q "genre:scifi" --format xspf
 ```
 
-Three rewrites cover the common cases:
+Four rewrites cover the common cases:
 
 - `--path-prefix VAL` — replaces the scan root entirely. Shorthand for "the share is the scan root".
 - `--strip-prefix VAL` — drops a leading segment from the original path (no-op if no match).
 - `--prepend-path VAL` — adds a prefix to the front of the (possibly stripped) path.
+- `--path-suffix VAL` — inserts a string before the file extension. Useful for pointing at companion files maintained out-of-band that follow a known suffix convention (e.g. `<asset>-short-1.ext` shorts).
 
-`--strip-prefix` and `--prepend-path` compose; `--path-prefix` can't be combined with the other two.
+`--strip-prefix`, `--prepend-path`, and `--path-suffix` compose; `--path-prefix` can't be combined with `--strip-prefix` or `--prepend-path`.
+
+Building a "shorts" playlist of `*-short-1.ext` companion files from your indexed library:
+
+```bash
+vlc-plylst export shorts.m3u8 -q "rating:>7" \
+  --strip-prefix /mnt --prepend-path smb://fnas \
+  --path-suffix -short-1
+```
+
+Each line in the playlist points at `smb://fnas/movies/<...>/<asset>-short-1.<ext>` even though only the main asset is indexed.
 
 ### Manage playlists
 

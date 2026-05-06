@@ -38,28 +38,43 @@ class PlaylistGenerator:
         path_prefix: str | None,
         prepend_path: str | None,
         strip_prefix: str | None,
+        path_suffix: str | None = None,
     ) -> str:
-        """Apply path-prefix / strip-prefix / prepend-path transformations.
+        """Apply path-prefix / strip-prefix / prepend-path / path-suffix
+        transformations.
 
         path_prefix replaces the scan root entirely (mutually exclusive with
-        the other two). Otherwise: optionally strip a leading segment from
-        the original full path, then optionally prepend a new prefix.
+        strip_prefix/prepend_path). strip_prefix removes a leading segment;
+        prepend_path adds a new front. path_suffix inserts a string before
+        the file extension and composes with all of the above.
         """
         if path_prefix:
-            return f"{path_prefix.rstrip('/')}/{relative_path}"
+            result = f"{path_prefix.rstrip('/')}/{relative_path}"
+        else:
+            base = full_path
+            if strip_prefix:
+                sp = strip_prefix.rstrip("/")
+                if base.startswith(sp + "/"):
+                    base = base[len(sp):]  # leaves the leading slash on the remainder
+                elif base == sp:
+                    base = ""
+            if prepend_path:
+                sep = "" if (not base or base.startswith("/")) else "/"
+                result = f"{prepend_path.rstrip('/')}{sep}{base}"
+            else:
+                result = base
 
-        base = full_path
-        if strip_prefix:
-            sp = strip_prefix.rstrip("/")
-            if base.startswith(sp + "/"):
-                base = base[len(sp):]  # leaves the leading slash on the remainder
-            elif base == sp:
-                base = ""
+        if path_suffix:
+            # Insert suffix before the file extension. Find the last '.' in
+            # the final path segment; if there isn't one, append to the end.
+            last_sep = max(result.rfind("/"), result.rfind("\\"))
+            last_dot = result.rfind(".")
+            if last_dot > last_sep:
+                result = result[:last_dot] + path_suffix + result[last_dot:]
+            else:
+                result = result + path_suffix
 
-        if prepend_path:
-            sep = "" if (not base or base.startswith("/")) else "/"
-            return f"{prepend_path.rstrip('/')}{sep}{base}"
-        return base
+        return result
 
     def generate_m3u8(
         self,
@@ -69,17 +84,19 @@ class PlaylistGenerator:
         path_prefix: str | None = None,
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
+        path_suffix: str | None = None,
         include_metadata: bool = True,
     ) -> str:
         """
         Generate M3U8 playlist content.
 
-        path_prefix replaces the scan root with a new prefix; mutually exclusive
-        with strip_prefix/prepend_path. strip_prefix removes a leading segment
-        from the original full path (e.g. "/mnt"), and prepend_path prepends a
-        new prefix to the result. They compose, so /mnt/movies/Heat.mkv with
-        strip_prefix="/mnt" + prepend_path="smb://nas" becomes
-        smb://nas/movies/Heat.mkv.
+        Path-rewrite options compose. path_prefix replaces the scan root with
+        a new prefix (mutually exclusive with strip_prefix/prepend_path).
+        strip_prefix removes a leading segment, prepend_path adds a new front,
+        and path_suffix inserts a string before the file extension — useful
+        when an out-of-band process maintains companion files (e.g. trailers
+        or shorts named "<asset>-short-1.ext") whose names follow a known
+        suffix convention but aren't themselves indexed.
         """
         lines = ["#EXTM3U"]
 
@@ -101,7 +118,7 @@ class PlaylistGenerator:
 
         for row in items:
             full_path = self._resolve_path(
-                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix
+                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix, path_suffix
             )
 
             if include_metadata:
@@ -121,10 +138,11 @@ class PlaylistGenerator:
         path_prefix: str | None = None,
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
+        path_suffix: str | None = None,
         playlist_title: str = "VLC Playlist",
     ) -> str:
         """Generate XSPF (XML) playlist content. See generate_m3u8 for the
-        path_prefix / strip_prefix / prepend_path semantics."""
+        path-rewrite option semantics."""
         # Get items
         if query_results is not None:
             items = query_results
@@ -149,7 +167,7 @@ class PlaylistGenerator:
 
         for row in items:
             full_path = self._resolve_path(
-                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix
+                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix, path_suffix
             )
 
             title = self._get_display_title(row)
@@ -202,6 +220,7 @@ class PlaylistGenerator:
         path_prefix: str | None = None,
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
+        path_suffix: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
@@ -224,6 +243,7 @@ class PlaylistGenerator:
                 path_prefix=path_prefix,
                 prepend_path=prepend_path,
                 strip_prefix=strip_prefix,
+                path_suffix=path_suffix,
                 playlist_title=output_path.stem,
             )
         else:
@@ -234,6 +254,7 @@ class PlaylistGenerator:
                 path_prefix=path_prefix,
                 prepend_path=prepend_path,
                 strip_prefix=strip_prefix,
+                path_suffix=path_suffix,
             )
 
         output_path.write_text(content, encoding="utf-8")
@@ -301,6 +322,7 @@ class PlaylistGenerator:
         path_prefix: str | None = None,
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
+        path_suffix: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
@@ -332,5 +354,6 @@ class PlaylistGenerator:
             path_prefix=path_prefix,
             prepend_path=prepend_path,
             strip_prefix=strip_prefix,
+            path_suffix=path_suffix,
             format=format,
         )

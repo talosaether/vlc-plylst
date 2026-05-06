@@ -297,6 +297,7 @@ def search(
 @click.option("--path-prefix", help="Replace the scan root with this prefix")
 @click.option("--strip-prefix", help="Strip this leading segment from the original full path")
 @click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
+@click.option("--path-suffix", help="Insert this string before the file extension (e.g. -short-1)")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default="m3u8")
 @click.option("--limit", "-n", type=int, default=500, help="Maximum items in playlist (default: 500)")
 @click.pass_context
@@ -309,6 +310,7 @@ def export(
     path_prefix: str | None,
     strip_prefix: str | None,
     prepend_path: str | None,
+    path_suffix: str | None,
     format: str,
     limit: int,
 ) -> None:
@@ -346,6 +348,7 @@ def export(
         path_prefix=path_prefix,
         prepend_path=prepend_path,
         strip_prefix=strip_prefix,
+        path_suffix=path_suffix,
         format=format,
         limit=limit,
     )
@@ -856,6 +859,7 @@ def roots(ctx: click.Context) -> None:
 @click.option("--path-prefix", help="Replace the scan root with this prefix")
 @click.option("--strip-prefix", help="Strip this leading segment from the original full path")
 @click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
+@click.option("--path-suffix", help="Insert this string before the file extension (e.g. -short-1)")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default=None)
 @click.option("--limit", "-n", type=int, help="Maximum items to include")
 @click.pass_context
@@ -866,6 +870,7 @@ def playlist_export(
     path_prefix: str | None,
     strip_prefix: str | None,
     prepend_path: str | None,
+    path_suffix: str | None,
     format: str | None,
     limit: int | None,
 ) -> None:
@@ -896,6 +901,7 @@ def playlist_export(
             path_prefix=path_prefix,
             prepend_path=prepend_path,
             strip_prefix=strip_prefix,
+            path_suffix=path_suffix,
             format=fmt,
             limit=limit,
         )
