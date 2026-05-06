@@ -177,7 +177,11 @@ vlc-plylst export action_movies.m3u8 -q "genre:action year:>2020"
 # /mnt/movies/Action/Heat.mkv -> smb://nas/movies/Action/Heat.mkv
 vlc-plylst export movies.m3u8 -q "rating:>8" --path-prefix "smb://nas/movies"
 
-# Or prepend a prefix while keeping the original path intact
+# Strip a leading segment, then prepend a new prefix
+# /mnt/movies/Action/Heat.mkv -> smb://nas/movies/Action/Heat.mkv
+vlc-plylst export movies.m3u8 -q "rating:>8" --strip-prefix /mnt --prepend-path "smb://nas"
+
+# Prepend without stripping (keeps the original full path)
 # /mnt/movies/Action/Heat.mkv -> smb://nas/mnt/movies/Action/Heat.mkv
 vlc-plylst export movies.m3u8 -q "rating:>8" --prepend-path "smb://nas"
 
@@ -185,7 +189,13 @@ vlc-plylst export movies.m3u8 -q "rating:>8" --prepend-path "smb://nas"
 vlc-plylst export movies.xspf -q "genre:scifi" --format xspf
 ```
 
-Use `--path-prefix` when the share exposes the *contents* of the scan root directly, and `--prepend-path` when the share exposes the *parent* (so the leading filesystem path is still meaningful on the target machine).
+Three rewrites cover the common cases:
+
+- `--path-prefix VAL` — replaces the scan root entirely. Shorthand for "the share is the scan root".
+- `--strip-prefix VAL` — drops a leading segment from the original path (no-op if no match).
+- `--prepend-path VAL` — adds a prefix to the front of the (possibly stripped) path.
+
+`--strip-prefix` and `--prepend-path` compose; `--path-prefix` can't be combined with the other two.
 
 ### Manage playlists
 

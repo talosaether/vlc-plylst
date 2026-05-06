@@ -37,15 +37,29 @@ class PlaylistGenerator:
         relative_path: str,
         path_prefix: str | None,
         prepend_path: str | None,
+        strip_prefix: str | None,
     ) -> str:
-        """Apply path-prefix or prepend-path transformation."""
+        """Apply path-prefix / strip-prefix / prepend-path transformations.
+
+        path_prefix replaces the scan root entirely (mutually exclusive with
+        the other two). Otherwise: optionally strip a leading segment from
+        the original full path, then optionally prepend a new prefix.
+        """
         if path_prefix:
             return f"{path_prefix.rstrip('/')}/{relative_path}"
+
+        base = full_path
+        if strip_prefix:
+            sp = strip_prefix.rstrip("/")
+            if base.startswith(sp + "/"):
+                base = base[len(sp):]  # leaves the leading slash on the remainder
+            elif base == sp:
+                base = ""
+
         if prepend_path:
-            # Keep the full original path; prepend the new prefix.
-            sep = "" if full_path.startswith("/") else "/"
-            return f"{prepend_path.rstrip('/')}{sep}{full_path}"
-        return full_path
+            sep = "" if (not base or base.startswith("/")) else "/"
+            return f"{prepend_path.rstrip('/')}{sep}{base}"
+        return base
 
     def generate_m3u8(
         self,
@@ -54,15 +68,18 @@ class PlaylistGenerator:
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
         prepend_path: str | None = None,
+        strip_prefix: str | None = None,
         include_metadata: bool = True,
     ) -> str:
         """
         Generate M3U8 playlist content.
 
-        path_prefix replaces the scan root with a new prefix (e.g. an SMB share
-        that exposes the root directly). prepend_path keeps the original
-        absolute path intact and just prepends the new prefix (e.g. an SMB
-        share that exposes the parent of the scan root). Pass at most one.
+        path_prefix replaces the scan root with a new prefix; mutually exclusive
+        with strip_prefix/prepend_path. strip_prefix removes a leading segment
+        from the original full path (e.g. "/mnt"), and prepend_path prepends a
+        new prefix to the result. They compose, so /mnt/movies/Heat.mkv with
+        strip_prefix="/mnt" + prepend_path="smb://nas" becomes
+        smb://nas/movies/Heat.mkv.
         """
         lines = ["#EXTM3U"]
 
@@ -84,7 +101,7 @@ class PlaylistGenerator:
 
         for row in items:
             full_path = self._resolve_path(
-                row["full_path"], row["relative_path"], path_prefix, prepend_path
+                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix
             )
 
             if include_metadata:
@@ -103,13 +120,11 @@ class PlaylistGenerator:
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
         prepend_path: str | None = None,
+        strip_prefix: str | None = None,
         playlist_title: str = "VLC Playlist",
     ) -> str:
-        """
-        Generate XSPF (XML) playlist content.
-
-        See generate_m3u8 for path_prefix vs prepend_path semantics.
-        """
+        """Generate XSPF (XML) playlist content. See generate_m3u8 for the
+        path_prefix / strip_prefix / prepend_path semantics."""
         # Get items
         if query_results is not None:
             items = query_results
@@ -134,7 +149,7 @@ class PlaylistGenerator:
 
         for row in items:
             full_path = self._resolve_path(
-                row["full_path"], row["relative_path"], path_prefix, prepend_path
+                row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix
             )
 
             title = self._get_display_title(row)
@@ -186,11 +201,12 @@ class PlaylistGenerator:
         query_results: list[sqlite3.Row] | None = None,
         path_prefix: str | None = None,
         prepend_path: str | None = None,
+        strip_prefix: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
-        """Save playlist to file. See generate_m3u8 for path_prefix /
-        prepend_path semantics."""
+        """Save playlist to file. See generate_m3u8 for the path-rewrite
+        option semantics."""
         output_path = Path(output_path)
 
         # Apply limit to playlist items if exporting by playlist_id
@@ -207,6 +223,7 @@ class PlaylistGenerator:
                 query_results=query_results,
                 path_prefix=path_prefix,
                 prepend_path=prepend_path,
+                strip_prefix=strip_prefix,
                 playlist_title=output_path.stem,
             )
         else:
@@ -216,6 +233,7 @@ class PlaylistGenerator:
                 query_results=query_results,
                 path_prefix=path_prefix,
                 prepend_path=prepend_path,
+                strip_prefix=strip_prefix,
             )
 
         output_path.write_text(content, encoding="utf-8")
@@ -282,11 +300,12 @@ class PlaylistGenerator:
         output_path: Path | str,
         path_prefix: str | None = None,
         prepend_path: str | None = None,
+        strip_prefix: str | None = None,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
         """Export a smart playlist by re-running its query (or load static
-        items). See generate_m3u8 for path_prefix / prepend_path semantics."""
+        items). See generate_m3u8 for path-rewrite option semantics."""
         from .query import QueryBuilder, parse_filter_string
 
         playlist = self.db.fetchone(
@@ -312,5 +331,6 @@ class PlaylistGenerator:
             query_results=results,
             path_prefix=path_prefix,
             prepend_path=prepend_path,
+            strip_prefix=strip_prefix,
             format=format,
         )

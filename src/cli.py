@@ -295,7 +295,8 @@ def search(
 @click.option("--ids", help="Comma-separated file IDs")
 @click.option("--playlist-id", "-p", type=int, help="Export existing playlist by ID")
 @click.option("--path-prefix", help="Replace the scan root with this prefix")
-@click.option("--prepend-path", help="Prepend this prefix to the original full path (keeps the scan root)")
+@click.option("--strip-prefix", help="Strip this leading segment from the original full path")
+@click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default="m3u8")
 @click.option("--limit", "-n", type=int, default=500, help="Maximum items in playlist (default: 500)")
 @click.pass_context
@@ -306,13 +307,14 @@ def export(
     ids: str | None,
     playlist_id: int | None,
     path_prefix: str | None,
+    strip_prefix: str | None,
     prepend_path: str | None,
     format: str,
     limit: int,
 ) -> None:
     """Export a playlist to M3U8 or XSPF format."""
-    if path_prefix and prepend_path:
-        console.print("[red]--path-prefix and --prepend-path are mutually exclusive[/red]")
+    if path_prefix and (prepend_path or strip_prefix):
+        console.print("[red]--path-prefix can't be combined with --strip-prefix or --prepend-path[/red]")
         sys.exit(1)
     db = get_db(ctx.obj["db_path"])
     generator = PlaylistGenerator(db)
@@ -343,6 +345,7 @@ def export(
         query_results=query_results,
         path_prefix=path_prefix,
         prepend_path=prepend_path,
+        strip_prefix=strip_prefix,
         format=format,
         limit=limit,
     )
@@ -851,7 +854,8 @@ def roots(ctx: click.Context) -> None:
 @click.argument("playlist_id", type=int)
 @click.argument("output", type=click.Path())
 @click.option("--path-prefix", help="Replace the scan root with this prefix")
-@click.option("--prepend-path", help="Prepend this prefix to the original full path (keeps the scan root)")
+@click.option("--strip-prefix", help="Strip this leading segment from the original full path")
+@click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default=None)
 @click.option("--limit", "-n", type=int, help="Maximum items to include")
 @click.pass_context
@@ -860,13 +864,14 @@ def playlist_export(
     playlist_id: int,
     output: str,
     path_prefix: str | None,
+    strip_prefix: str | None,
     prepend_path: str | None,
     format: str | None,
     limit: int | None,
 ) -> None:
     """Export a saved playlist (smart playlists re-run their query)."""
-    if path_prefix and prepend_path:
-        console.print("[red]--path-prefix and --prepend-path are mutually exclusive[/red]")
+    if path_prefix and (prepend_path or strip_prefix):
+        console.print("[red]--path-prefix can't be combined with --strip-prefix or --prepend-path[/red]")
         sys.exit(1)
     db = get_db(ctx.obj["db_path"])
     generator = PlaylistGenerator(db)
@@ -890,6 +895,7 @@ def playlist_export(
             output_path=output,
             path_prefix=path_prefix,
             prepend_path=prepend_path,
+            strip_prefix=strip_prefix,
             format=fmt,
             limit=limit,
         )
