@@ -165,6 +165,8 @@ vlc-plylst search -q "genre:horror" --json
 
 Sort options: `title_asc`, `title_desc`, `year_asc`, `year_desc`, `rating_asc`, `rating_desc`, `runtime_asc`, `runtime_desc`, `random`
 
+Any unrecognized key is treated as a custom-attribute filter (whatever non-standard NFO tags your library uses). Custom attributes support substring match (`mood:cozy`) and numeric comparison (`custom_rating:>4`, `custom_rating:<=7`). Non-numeric values are skipped when a comparison operator is used.
+
 ### Export playlists
 
 ```bash

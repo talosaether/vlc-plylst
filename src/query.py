@@ -11,6 +11,24 @@ if TYPE_CHECKING:
     from .db import Database
 
 
+_NUMERIC_OPS = ("<=", ">=", "<", ">")
+
+
+def _parse_numeric_op(raw: str) -> tuple[str, float] | None:
+    """Detect a leading <, >, <=, >= and parse the rest as a number.
+
+    Returns (op, number) on match, or None if the value isn't a comparison.
+    A bare "-5" is treated as a value (not "<5"), so negative numbers work.
+    """
+    for op in _NUMERIC_OPS:
+        if raw.startswith(op):
+            try:
+                return op, float(raw[len(op):])
+            except ValueError:
+                return None
+    return None
+
+
 class SortOrder(Enum):
     """Sort order options."""
 
@@ -275,8 +293,20 @@ class QueryBuilder:
                     AND {alias}_def.attr_name = ?
             """)
             join_params.append(attr_name)
-            conditions.append(f"{alias}.attr_value LIKE ?")
-            params.append(f"%{attr_value}%")
+
+            numeric = _parse_numeric_op(attr_value)
+            if numeric is not None:
+                op, number = numeric
+                # Guard CAST against non-numeric stored values (CAST('abc' AS REAL) = 0).
+                # GLOB requires the value to start with a digit or '-' followed by a digit.
+                conditions.append(
+                    f"({alias}.attr_value GLOB '[0-9]*' OR {alias}.attr_value GLOB '-[0-9]*') "
+                    f"AND CAST({alias}.attr_value AS REAL) {op} ?"
+                )
+                params.append(number)
+            else:
+                conditions.append(f"{alias}.attr_value LIKE ?")
+                params.append(f"%{attr_value}%")
 
         # Root filter
         if filters.root_id:
