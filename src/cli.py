@@ -714,53 +714,54 @@ def refresh(ctx: click.Context) -> None:
 
 
 @cli.command()
-@click.option("--dry-run", is_flag=True, help="Show what would be deleted without deleting")
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without changing the DB")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def prune(ctx: click.Context, dry_run: bool, yes: bool) -> None:
-    """Remove files marked as missing and their metadata.
+    """Remove DB records for files flagged as missing.
 
-    Files become "missing" when they're not found during a scan
-    (deleted from disk, moved, or filtered out by new scan settings).
+    Files become "missing" when a scan no longer finds them on disk
+    (deleted, moved, or excluded by new scan filters). Prune only
+    removes the database records — files on disk are never touched.
     """
     db = get_db(ctx.obj["db_path"])
 
-    # Count missing files
     row = db.fetchone("SELECT COUNT(*) as count FROM media_files WHERE is_missing = 1")
     missing_count = row["count"] if row else 0
 
     if missing_count == 0:
-        console.print("[green]No missing files to prune[/green]")
+        console.print("[green]No missing-file records to prune[/green]")
         db.close()
         return
 
-    console.print(f"Found [yellow]{missing_count}[/yellow] missing files")
+    console.print(f"Found [yellow]{missing_count}[/yellow] missing-file records (files on disk are not touched)")
 
     if dry_run:
-        # Show some examples
         examples = db.fetchall(
             "SELECT filename, relative_path FROM media_files WHERE is_missing = 1 LIMIT 10"
         )
-        console.print("\n[dim]Examples of files to be pruned:[/dim]")
+        console.print("\n[dim]Examples of records to be removed:[/dim]")
         for ex in examples:
             console.print(f"  - {ex['relative_path']}")
         if missing_count > 10:
             console.print(f"  [dim]... and {missing_count - 10} more[/dim]")
-        console.print("\n[dim]Run without --dry-run to delete[/dim]")
+        console.print("\n[dim]Run without --dry-run to remove the DB records[/dim]")
         db.close()
         return
 
-    # Confirm unless -y
     if not yes:
-        if not click.confirm(f"Delete {missing_count} files and their metadata?"):
+        prompt = (
+            f"Remove {missing_count} missing-file records from the DB? "
+            "(files on disk will not be touched)"
+        )
+        if not click.confirm(prompt):
             console.print("[dim]Cancelled[/dim]")
             db.close()
             return
 
-    # Do the prune
     counts = db.prune_missing_files()
 
-    console.print(f"\n[green]Pruned {counts['files']} files[/green]")
+    console.print(f"\n[green]Removed {counts['files']} file records[/green]")
     if counts.get("metadata", 0) > 0:
         console.print(f"  Metadata records: {counts['metadata']}")
     if counts.get("genre_links", 0) > 0:

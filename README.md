@@ -224,10 +224,11 @@ vlc-plylst refresh
 # Library statistics
 vlc-plylst stats
 
-# Remove files marked as missing (filtered out, deleted, moved)
-vlc-plylst prune --dry-run    # Preview what would be deleted
-vlc-plylst prune              # Delete with confirmation
-vlc-plylst prune -y           # Delete without confirmation
+# Remove DB records for files flagged as missing (deleted, moved, or excluded
+# by new scan filters). DB-only — files on disk are never touched.
+vlc-plylst prune --dry-run    # Preview what would be removed
+vlc-plylst prune              # Remove with confirmation
+vlc-plylst prune -y           # Remove without confirmation
 
 # Interactive mode
 vlc-plylst repl
