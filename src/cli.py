@@ -774,6 +774,101 @@ def prune(ctx: click.Context, dry_run: bool, yes: bool) -> None:
 
 
 @cli.command()
+@click.argument("file_id", type=int)
+@click.pass_context
+def show(ctx: click.Context, file_id: int) -> None:
+    """Show details for a single media file by ID."""
+    from .repl import print_file_details
+
+    db = get_db(ctx.obj["db_path"])
+    found = print_file_details(db, file_id)
+    db.close()
+    if not found:
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("filter_str", required=False, default="")
+@click.pass_context
+def count(ctx: click.Context, filter_str: str) -> None:
+    """Count media files matching a filter (no rows fetched).
+
+    Example: vlc-plylst count "genre:action year:>2020"
+    """
+    db = get_db(ctx.obj["db_path"])
+    filters = parse_filter_string(filter_str)
+    n = QueryBuilder(db).count(filters)
+    console.print(f"[green]{n} matching files[/green]")
+    db.close()
+
+
+@cli.command()
+@click.pass_context
+def roots(ctx: click.Context) -> None:
+    """List configured library roots."""
+    db = get_db(ctx.obj["db_path"])
+    rows = db.list_roots()
+    if not rows:
+        console.print("[yellow]No library roots configured[/yellow]")
+        db.close()
+        return
+
+    table = Table(title="Library Roots")
+    table.add_column("ID", style="dim")
+    table.add_column("Path")
+    table.add_column("Label")
+    table.add_column("Last Scanned")
+
+    for r in rows:
+        table.add_row(
+            str(r["root_id"]),
+            r["root_path"],
+            r["label"] or "-",
+            r["last_scanned"][:19] if r["last_scanned"] else "Never",
+        )
+
+    console.print(table)
+    db.close()
+
+
+@playlist.command("export")
+@click.argument("playlist_id", type=int)
+@click.argument("output", type=click.Path())
+@click.option("--path-prefix", help="Replace root paths with this prefix")
+@click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default=None)
+@click.option("--limit", "-n", type=int, help="Maximum items to include")
+@click.pass_context
+def playlist_export(
+    ctx: click.Context,
+    playlist_id: int,
+    output: str,
+    path_prefix: str | None,
+    format: str | None,
+    limit: int | None,
+) -> None:
+    """Export a saved playlist (smart playlists re-run their query)."""
+    db = get_db(ctx.obj["db_path"])
+    generator = PlaylistGenerator(db)
+
+    fmt = format or ("xspf" if output.endswith(".xspf") else "m3u8")
+    try:
+        output_path, item_count = generator.export_smart_playlist(
+            playlist_id=playlist_id,
+            output_path=output,
+            path_prefix=path_prefix,
+            format=fmt,
+            limit=limit,
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        db.close()
+        sys.exit(1)
+
+    console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
+    db.close()
+
+
+@cli.command()
 @click.pass_context
 def repl(ctx: click.Context) -> None:
     """Start interactive query mode."""

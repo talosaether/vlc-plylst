@@ -191,6 +191,30 @@ vlc-plylst playlist list
 vlc-plylst playlist export 1 best2024.m3u8
 ```
 
+### Inspect a single file
+
+```bash
+# Full details (path, year, rating, genres, cast, directors, IDs, custom attrs)
+vlc-plylst show 42
+```
+
+`search` lists `ID` in the first column — pass it to `show`.
+
+### Count without listing
+
+```bash
+# Same filter syntax as search; returns just a count
+vlc-plylst count "genre:action year:>2020"
+```
+
+Useful for sizing a query before exporting it.
+
+### List library roots
+
+```bash
+vlc-plylst roots
+```
+
 ### Maintenance commands
 
 ```bash

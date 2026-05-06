@@ -18,6 +18,107 @@ from .playlist import PlaylistGenerator
 
 console = Console()
 
+
+def print_file_details(db: Database, file_id: int) -> bool:
+    """Print full details for a single media file. Returns False if not found."""
+    row = db.fetchone("SELECT * FROM v_media_full WHERE file_id = ?", (file_id,))
+    if not row:
+        console.print(f"[red]File {file_id} not found[/red]")
+        return False
+
+    console.print(f"\n[bold]{row['title'] or row['filename']}[/bold]")
+    console.print(f"[dim]ID: {file_id}[/dim]\n")
+
+    info_table = Table(show_header=False, box=None)
+    info_table.add_column("Key", style="cyan")
+    info_table.add_column("Value")
+
+    info_table.add_row("Path", row["full_path"])
+    if row["year"]:
+        info_table.add_row("Year", str(row["year"]))
+    if row["rating"]:
+        info_table.add_row("Rating", f"{row['rating']:.1f}")
+    if row["runtime"]:
+        info_table.add_row("Runtime", f"{row['runtime']} minutes")
+    if row["mpaa"]:
+        info_table.add_row("MPAA", row["mpaa"])
+    if row["set_name"]:
+        info_table.add_row("Collection", row["set_name"])
+
+    console.print(info_table)
+
+    if row["plot"]:
+        console.print(f"\n[dim]{row['plot'][:500]}{'...' if len(row['plot']) > 500 else ''}[/dim]")
+
+    if row["video_codec"] or row["video_width"]:
+        console.print("\n[bold]Technical:[/bold]")
+        tech = []
+        if row["video_width"] and row["video_height"]:
+            tech.append(f"{row['video_width']}x{row['video_height']}")
+        if row["video_codec"]:
+            tech.append(row["video_codec"])
+        if row["audio_codec"]:
+            tech.append(row["audio_codec"])
+        console.print("  " + " | ".join(tech))
+
+    genres = db.fetchall(
+        """
+        SELECT g.name FROM media_genres mg
+        JOIN genres g ON mg.genre_id = g.genre_id
+        WHERE mg.file_id = ?
+        """,
+        (file_id,),
+    )
+    if genres:
+        console.print("\n[bold]Genres:[/bold] " + ", ".join(g["name"] for g in genres))
+
+    actors = db.fetchall(
+        """
+        SELECT p.name, ma.role FROM media_actors ma
+        JOIN people p ON ma.person_id = p.person_id
+        WHERE ma.file_id = ?
+        ORDER BY ma.display_order
+        LIMIT 10
+        """,
+        (file_id,),
+    )
+    if actors:
+        console.print("\n[bold]Cast:[/bold]")
+        for a in actors:
+            if a["role"]:
+                console.print(f"  - {a['name']} as {a['role']}")
+            else:
+                console.print(f"  - {a['name']}")
+
+    directors = db.fetchall(
+        """
+        SELECT p.name FROM media_directors md
+        JOIN people p ON md.person_id = p.person_id
+        WHERE md.file_id = ?
+        """,
+        (file_id,),
+    )
+    if directors:
+        console.print("\n[bold]Director(s):[/bold] " + ", ".join(d["name"] for d in directors))
+
+    ext_ids = db.fetchall(
+        "SELECT provider, external_id FROM external_ids WHERE file_id = ?",
+        (file_id,),
+    )
+    if ext_ids:
+        console.print("\n[bold]External IDs:[/bold]")
+        for eid in ext_ids:
+            console.print(f"  - {eid['provider']}: {eid['external_id']}")
+
+    custom = db.get_custom_attributes(file_id)
+    if custom:
+        console.print("\n[bold]Custom Attributes:[/bold]")
+        for ca in custom:
+            console.print(f"  - {ca['attr_name']}: {ca['attr_value']}")
+
+    console.print()
+    return True
+
 HELP_TEXT = """
 [bold]VLC Playlist Generator - Interactive Mode[/bold]
 
@@ -100,112 +201,7 @@ class MediaREPL:
         except ValueError:
             console.print("[red]Usage: show <file_id>[/red]")
             return
-
-        # Get basic info
-        row = self.db.fetchone("SELECT * FROM v_media_full WHERE file_id = ?", (file_id,))
-        if not row:
-            console.print(f"[red]File {file_id} not found[/red]")
-            return
-
-        console.print(f"\n[bold]{row['title'] or row['filename']}[/bold]")
-        console.print(f"[dim]ID: {file_id}[/dim]\n")
-
-        # Basic info
-        info_table = Table(show_header=False, box=None)
-        info_table.add_column("Key", style="cyan")
-        info_table.add_column("Value")
-
-        info_table.add_row("Path", row["full_path"])
-        if row["year"]:
-            info_table.add_row("Year", str(row["year"]))
-        if row["rating"]:
-            info_table.add_row("Rating", f"{row['rating']:.1f}")
-        if row["runtime"]:
-            info_table.add_row("Runtime", f"{row['runtime']} minutes")
-        if row["mpaa"]:
-            info_table.add_row("MPAA", row["mpaa"])
-        if row["set_name"]:
-            info_table.add_row("Collection", row["set_name"])
-
-        console.print(info_table)
-
-        # Plot
-        if row["plot"]:
-            console.print(f"\n[dim]{row['plot'][:500]}{'...' if len(row['plot']) > 500 else ''}[/dim]")
-
-        # Technical info
-        if row["video_codec"] or row["video_width"]:
-            console.print("\n[bold]Technical:[/bold]")
-            tech = []
-            if row["video_width"] and row["video_height"]:
-                tech.append(f"{row['video_width']}x{row['video_height']}")
-            if row["video_codec"]:
-                tech.append(row["video_codec"])
-            if row["audio_codec"]:
-                tech.append(row["audio_codec"])
-            console.print("  " + " | ".join(tech))
-
-        # Genres
-        genres = self.db.fetchall(
-            """
-            SELECT g.name FROM media_genres mg
-            JOIN genres g ON mg.genre_id = g.genre_id
-            WHERE mg.file_id = ?
-            """,
-            (file_id,),
-        )
-        if genres:
-            console.print("\n[bold]Genres:[/bold] " + ", ".join(g["name"] for g in genres))
-
-        # Actors
-        actors = self.db.fetchall(
-            """
-            SELECT p.name, ma.role FROM media_actors ma
-            JOIN people p ON ma.person_id = p.person_id
-            WHERE ma.file_id = ?
-            ORDER BY ma.display_order
-            LIMIT 10
-            """,
-            (file_id,),
-        )
-        if actors:
-            console.print("\n[bold]Cast:[/bold]")
-            for a in actors:
-                if a["role"]:
-                    console.print(f"  - {a['name']} as {a['role']}")
-                else:
-                    console.print(f"  - {a['name']}")
-
-        # Directors
-        directors = self.db.fetchall(
-            """
-            SELECT p.name FROM media_directors md
-            JOIN people p ON md.person_id = p.person_id
-            WHERE md.file_id = ?
-            """,
-            (file_id,),
-        )
-        if directors:
-            console.print("\n[bold]Director(s):[/bold] " + ", ".join(d["name"] for d in directors))
-
-        # External IDs
-        ext_ids = self.db.fetchall(
-            "SELECT provider, external_id FROM external_ids WHERE file_id = ?",
-            (file_id,),
-        )
-        if ext_ids:
-            console.print("\n[bold]External IDs:[/bold]")
-            for eid in ext_ids:
-                console.print(f"  - {eid['provider']}: {eid['external_id']}")
-
-        # Custom attributes
-        custom = self.db.get_custom_attributes(file_id)
-        if custom:
-            console.print("\n[bold]Custom Attributes:[/bold]")
-            for ca in custom:
-                console.print(f"  - {ca['attr_name']}: {ca['attr_value']}")
-
-        console.print()
+        print_file_details(self.db, file_id)
 
     def cmd_export(self, args: str) -> None:
         """Export to playlist."""
