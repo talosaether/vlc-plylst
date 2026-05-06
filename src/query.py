@@ -109,20 +109,22 @@ class QueryBuilder:
         self.db = db
 
     def _sort_clause(self, sort: SortOrder) -> str:
-        """Generate ORDER BY clause."""
+        """Generate ORDER BY clause. Non-title, non-random sorts get a title
+        tiebreaker so ties are deterministic instead of relying on rowid order."""
+        title_tb = ", COALESCE(v.title, v.filename) ASC"
         sort_map = {
             SortOrder.TITLE_ASC: "COALESCE(v.title, v.filename) ASC",
             SortOrder.TITLE_DESC: "COALESCE(v.title, v.filename) DESC",
-            SortOrder.YEAR_ASC: "v.year ASC NULLS LAST",
-            SortOrder.YEAR_DESC: "v.year DESC NULLS LAST",
-            SortOrder.RATING_ASC: "v.rating ASC NULLS LAST",
-            SortOrder.RATING_DESC: "v.rating DESC NULLS LAST",
-            SortOrder.RUNTIME_ASC: "v.runtime ASC NULLS LAST",
-            SortOrder.RUNTIME_DESC: "v.runtime DESC NULLS LAST",
-            SortOrder.SIZE_ASC: "v.file_size ASC",
-            SortOrder.SIZE_DESC: "v.file_size DESC",
-            SortOrder.ADDED_ASC: "mf.first_seen ASC",
-            SortOrder.ADDED_DESC: "mf.first_seen DESC",
+            SortOrder.YEAR_ASC: "v.year ASC NULLS LAST" + title_tb,
+            SortOrder.YEAR_DESC: "v.year DESC NULLS LAST" + title_tb,
+            SortOrder.RATING_ASC: "v.rating ASC NULLS LAST" + title_tb,
+            SortOrder.RATING_DESC: "v.rating DESC NULLS LAST" + title_tb,
+            SortOrder.RUNTIME_ASC: "v.runtime ASC NULLS LAST" + title_tb,
+            SortOrder.RUNTIME_DESC: "v.runtime DESC NULLS LAST" + title_tb,
+            SortOrder.SIZE_ASC: "v.file_size ASC" + title_tb,
+            SortOrder.SIZE_DESC: "v.file_size DESC" + title_tb,
+            SortOrder.ADDED_ASC: "mf.first_seen ASC" + title_tb,
+            SortOrder.ADDED_DESC: "mf.first_seen DESC" + title_tb,
             SortOrder.RANDOM: "RANDOM()",
         }
         return sort_map.get(sort, "COALESCE(v.title, v.filename) ASC")
