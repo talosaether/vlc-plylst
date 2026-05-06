@@ -118,6 +118,7 @@ class QueryBuilder:
         """
         conditions: list[str] = []
         params: list[Any] = []
+        join_params: list[Any] = []
         joins: list[str] = []
 
         # Base query with media files join (for first_seen access)
@@ -273,7 +274,7 @@ class QueryBuilder:
                 JOIN custom_attribute_defs {alias}_def ON {alias}.attr_def_id = {alias}_def.attr_def_id
                     AND {alias}_def.attr_name = ?
             """)
-            params.append(attr_name)
+            join_params.append(attr_name)
             conditions.append(f"{alias}.attr_value LIKE ?")
             params.append(f"%{attr_value}%")
 
@@ -288,9 +289,11 @@ class QueryBuilder:
             sql += " WHERE " + " AND ".join(conditions)
         sql += f" ORDER BY {self._sort_clause(filters.sort)}"
         sql += " LIMIT ? OFFSET ?"
-        params.extend([filters.limit, filters.offset])
 
-        return sql, params
+        # Placeholder order in the SQL: JOIN params first, then WHERE params, then LIMIT/OFFSET.
+        final_params = join_params + params + [filters.limit, filters.offset]
+
+        return sql, final_params
 
     def execute(self, filters: QueryFilter) -> list[sqlite3.Row]:
         """Execute query and return results."""
