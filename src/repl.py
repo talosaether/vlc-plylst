@@ -177,13 +177,14 @@ class MediaREPL:
 
         filters = parse_filter_string(args)
         results = self.query_builder.execute(filters)
+        total = self.query_builder.count(filters)
         self.last_results = results
 
         if not results:
             console.print("[yellow]No results found[/yellow]")
             return
 
-        self._display_results(results)
+        self._display_results(results, total=total)
 
     def cmd_count(self, args: str) -> None:
         """Count matching results."""
@@ -342,9 +343,14 @@ class MediaREPL:
 
         console.print(table)
 
-    def _display_results(self, results: list) -> None:
+    def _display_results(self, results: list, total: int | None = None) -> None:
         """Display search results in a table."""
-        table = Table(title=f"Results ({len(results)} items)")
+        n = len(results)
+        if total is not None and total > n:
+            title = f"Results ({n} of {total})"
+        else:
+            title = f"Results ({n} items)"
+        table = Table(title=title)
         table.add_column("ID", style="dim", width=6)
         table.add_column("Title", max_width=40)
         table.add_column("Year", justify="right", width=6)

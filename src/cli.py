@@ -252,6 +252,7 @@ def search(
 
     query_builder = QueryBuilder(db)
     results = query_builder.execute(filters)
+    total = query_builder.count(filters)
 
     if as_json:
         import json
@@ -261,7 +262,9 @@ def search(
         if not results:
             console.print("[yellow]No results found[/yellow]")
         else:
-            table = Table(title=f"Search Results ({len(results)} items)")
+            n = len(results)
+            title = f"Search Results ({n} of {total})" if total > n else f"Search Results ({n})"
+            table = Table(title=title)
             table.add_column("ID", style="dim")
             table.add_column("Title")
             table.add_column("Year", justify="right")
@@ -312,6 +315,7 @@ def export(
     file_ids = None
     query_results = None
 
+    total_matches: int | None = None
     if ids:
         file_ids = [int(i.strip()) for i in ids.split(",")][:limit]
     elif query:
@@ -319,6 +323,7 @@ def export(
         filters.limit = limit
         query_builder = QueryBuilder(db)
         query_results = query_builder.execute(filters)
+        total_matches = query_builder.count(filters)
     elif playlist_id:
         pass  # Will use playlist_id directly
     else:
@@ -336,7 +341,13 @@ def export(
         limit=limit,
     )
 
-    console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
+    if total_matches is not None and total_matches > item_count:
+        console.print(
+            f"[green]Exported {item_count} of {total_matches} matches to {output_path}[/green]"
+            f" [dim](raise --limit to include more)[/dim]"
+        )
+    else:
+        console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
 
     db.close()
 
@@ -850,6 +861,18 @@ def playlist_export(
     generator = PlaylistGenerator(db)
 
     fmt = format or ("xspf" if output.endswith(".xspf") else "m3u8")
+
+    # If smart playlist with a limit, count total matches so we can show "N of M".
+    total_matches: int | None = None
+    if limit is not None:
+        playlist_row = db.fetchone(
+            "SELECT is_smart, smart_query FROM playlists WHERE playlist_id = ?",
+            (playlist_id,),
+        )
+        if playlist_row and playlist_row["is_smart"] and playlist_row["smart_query"]:
+            f = parse_filter_string(playlist_row["smart_query"])
+            total_matches = QueryBuilder(db).count(f)
+
     try:
         output_path, item_count = generator.export_smart_playlist(
             playlist_id=playlist_id,
@@ -863,7 +886,13 @@ def playlist_export(
         db.close()
         sys.exit(1)
 
-    console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
+    if total_matches is not None and total_matches > item_count:
+        console.print(
+            f"[green]Exported {item_count} of {total_matches} matches to {output_path}[/green]"
+            f" [dim](raise --limit to include more)[/dim]"
+        )
+    else:
+        console.print(f"[green]Exported {item_count} items to {output_path}[/green]")
     db.close()
 
 
