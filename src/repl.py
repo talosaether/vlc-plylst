@@ -294,9 +294,7 @@ class MediaREPL:
         size_gb = stats["total_size_bytes"] / (1024 ** 3)
         table.add_row("Total files", str(stats["total_files"]))
         table.add_row("Total size", f"{size_gb:.2f} GB")
-        table.add_row("Hashed files", str(stats["hashed_files"]))
         table.add_row("Files with NFO", str(stats["files_with_nfo"]))
-        table.add_row("Duplicate groups", str(stats["duplicate_groups"]))
         table.add_row("Genres", str(stats["total_genres"]))
         table.add_row("People", str(stats["total_people"]))
 

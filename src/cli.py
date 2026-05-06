@@ -429,9 +429,7 @@ def stats(ctx: click.Context) -> None:
 
     table.add_row("Total files", str(library_stats["total_files"]))
     table.add_row("Total size", f"{size_gb:.2f} GB")
-    table.add_row("Hashed files", str(library_stats["hashed_files"]))
     table.add_row("Files with NFO", str(library_stats["files_with_nfo"]))
-    table.add_row("Duplicate groups", str(library_stats["duplicate_groups"]))
     table.add_row("Genres", str(library_stats["total_genres"]))
     table.add_row("People", str(library_stats["total_people"]))
 

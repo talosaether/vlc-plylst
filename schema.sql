@@ -34,14 +34,12 @@ CREATE TABLE IF NOT EXISTS media_files (
     filename        TEXT NOT NULL,
 
     -- File identification
-    sha256_hash     TEXT,
     file_size       INTEGER,
     file_mtime      TEXT,
 
     -- Scan tracking
     first_seen      TEXT DEFAULT (datetime('now')),
     last_seen       TEXT DEFAULT (datetime('now')),
-    last_hashed     TEXT,
     scan_version    INTEGER DEFAULT 0,
 
     -- NFO status
@@ -51,13 +49,11 @@ CREATE TABLE IF NOT EXISTS media_files (
 
     -- Status flags
     is_missing      INTEGER DEFAULT 0,
-    is_duplicate    INTEGER DEFAULT 0,
 
     FOREIGN KEY (root_id) REFERENCES roots(root_id) ON DELETE CASCADE,
     UNIQUE(root_id, relative_path)
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_hash ON media_files(sha256_hash);
 CREATE INDEX IF NOT EXISTS idx_media_root ON media_files(root_id);
 CREATE INDEX IF NOT EXISTS idx_media_missing ON media_files(is_missing);
 CREATE INDEX IF NOT EXISTS idx_media_filename ON media_files(filename);
@@ -398,7 +394,6 @@ SELECT
     mf.relative_path,
     r.root_path || '/' || mf.relative_path AS full_path,
     mf.filename,
-    mf.sha256_hash,
     mf.file_size,
     mm.title,
     mm.originaltitle,
@@ -417,29 +412,6 @@ JOIN roots r ON mf.root_id = r.root_id
 LEFT JOIN media_metadata mm ON mf.file_id = mm.file_id
 LEFT JOIN file_info fi ON mf.file_id = fi.file_id
 WHERE mf.is_missing = 0;
-
--- Duplicates view
-CREATE VIEW IF NOT EXISTS v_duplicates AS
-SELECT
-    sha256_hash,
-    COUNT(*) as copy_count,
-    GROUP_CONCAT(file_id) as file_ids
-FROM media_files
-WHERE sha256_hash IS NOT NULL
-GROUP BY sha256_hash
-HAVING COUNT(*) > 1;
-
--- Files needing rescan
-CREATE VIEW IF NOT EXISTS v_needs_rescan AS
-SELECT
-    mf.file_id,
-    r.root_path || '/' || mf.relative_path AS full_path,
-    mf.file_mtime,
-    mf.last_hashed
-FROM media_files mf
-JOIN roots r ON mf.root_id = r.root_id
-WHERE mf.is_missing = 0
-  AND (mf.last_hashed IS NULL OR mf.file_mtime > mf.last_hashed);
 
 -- ============================================================================
 -- SECTION 12: TRIGGERS

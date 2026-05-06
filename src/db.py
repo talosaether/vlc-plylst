@@ -49,8 +49,39 @@ class Database:
 
     def init_schema(self) -> None:
         """Initialize database schema from schema.sql."""
+        self._migrate_drop_hash_feature()
         schema_sql = SCHEMA_PATH.read_text()
         self.conn.executescript(schema_sql)
+        self.conn.commit()
+
+    def _migrate_drop_hash_feature(self) -> None:
+        # SHA256 hashing was removed in commit a70a46a; clean up residual schema
+        # in pre-existing DBs. Idempotent: a no-op once the columns/views are gone.
+        has_table = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_files'"
+        ).fetchone()
+        if not has_table:
+            return
+
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(media_files)")}
+        residual = {"sha256_hash", "last_hashed", "is_duplicate"} & cols
+        residual_views_or_index = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name IN "
+            "('v_duplicates', 'v_needs_rescan', 'idx_media_hash')"
+        ).fetchone()
+        if not residual and not residual_views_or_index:
+            return
+
+        # v_media_full also references sha256_hash and must be dropped before the
+        # column drop; schema.sql will recreate it without that column.
+        self.conn.executescript("""
+            DROP VIEW IF EXISTS v_media_full;
+            DROP VIEW IF EXISTS v_duplicates;
+            DROP VIEW IF EXISTS v_needs_rescan;
+            DROP INDEX IF EXISTS idx_media_hash;
+        """)
+        for col in residual:
+            self.conn.execute(f"ALTER TABLE media_files DROP COLUMN {col}")
         self.conn.commit()
 
     @contextmanager
@@ -183,15 +214,6 @@ class Database:
             (root_id, relative_path),
         )
 
-    def update_file_hash(self, file_id: int, sha256_hash: str) -> None:
-        """Update file hash and hash timestamp."""
-        now = datetime.now().isoformat()
-        self.execute(
-            "UPDATE media_files SET sha256_hash = ?, last_hashed = ? WHERE file_id = ?",
-            (sha256_hash, now, file_id),
-        )
-        self.conn.commit()
-
     def update_nfo_info(
         self, file_id: int, nfo_path: str, nfo_mtime: str
     ) -> None:
@@ -219,22 +241,6 @@ class Database:
         )
         self.conn.commit()
         return cursor.rowcount
-
-    def get_files_needing_hash(self, root_id: int, limit: int = 100) -> list[sqlite3.Row]:
-        """Get files that need hashing (new or changed)."""
-        return self.fetchall(
-            """
-            SELECT * FROM media_files
-            WHERE root_id = ? AND is_missing = 0
-              AND (last_hashed IS NULL OR file_mtime > last_hashed)
-            LIMIT ?
-            """,
-            (root_id, limit),
-        )
-
-    def find_duplicates(self) -> list[sqlite3.Row]:
-        """Find files with duplicate hashes."""
-        return self.fetchall("SELECT * FROM v_duplicates")
 
     # =========================================================================
     # METADATA OPERATIONS
@@ -746,16 +752,10 @@ class Database:
         stats["total_files"] = row["count"]
         stats["total_size_bytes"] = row["size"] or 0
 
-        row = self.fetchone("SELECT COUNT(*) as count FROM media_files WHERE sha256_hash IS NOT NULL")
-        stats["hashed_files"] = row["count"]
-
         row = self.fetchone(
             "SELECT COUNT(*) as count FROM media_files WHERE nfo_parsed_at IS NOT NULL"
         )
         stats["files_with_nfo"] = row["count"]
-
-        row = self.fetchone("SELECT COUNT(*) as count FROM v_duplicates")
-        stats["duplicate_groups"] = row["count"]
 
         row = self.fetchone("SELECT COUNT(*) as count FROM genres")
         stats["total_genres"] = row["count"]
