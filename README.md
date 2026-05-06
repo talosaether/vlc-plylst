@@ -18,17 +18,51 @@ Recursively scan video libraries, parse NFO metadata into SQLite, and generate f
 
 ## Installation
 
+Requires Python 3.10+.
+
 ```bash
-# Clone the repo
 git clone git@github.com:talosaether/vlc-plylst.git
 cd vlc-plylst
+```
 
-# Install with uv (recommended)
+### Option A: install globally with `uv` (recommended)
+
+Puts `vlc-plylst` on your `PATH` so you can run it from anywhere. Editable mode picks up local code changes.
+
+```bash
+uv tool install --editable .
+vlc-plylst --help
+```
+
+If `~/.local/bin` (or wherever `uv` installs tools) isn't on your `PATH`, run `uv tool update-shell` and restart your shell.
+
+### Option B: project-local virtualenv
+
+Keeps everything inside `.venv/` — you must activate the venv (or call the binary by full path) for the command to be found.
+
+```bash
+# with uv
 uv venv && uv pip install -e .
 
-# Or with pip
-python -m venv .venv && source .venv/bin/activate && pip install -e .
+# or with stock pip
+python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 ```
+
+Then either:
+
+```bash
+source .venv/bin/activate   # activate, then run `vlc-plylst ...`
+# or
+./.venv/bin/vlc-plylst --help   # call directly, no activation
+```
+
+### Verify
+
+```bash
+vlc-plylst --help
+```
+
+If you get `zsh: command not found: vlc-plylst`, the binary isn't on your `PATH` — either activate the venv (Option B) or use `uv tool install` (Option A).
 
 ## Usage
 
