@@ -54,6 +54,7 @@ class QueryFilter:
     # Text search
     title: str | None = None
     plot: str | None = None
+    filename_suffix: str | None = None  # matches filename LIKE '%<value>%.%' (before extension)
 
     # Year filters
     year: int | None = None
@@ -160,6 +161,12 @@ class QueryBuilder:
         if filters.plot:
             conditions.append("v.plot LIKE ?")
             params.append(f"%{filters.plot}%")
+
+        # Filename pattern that must appear before the extension, e.g.
+        # suffix:-short- catches *-short-1.mkv, *-short-2.mp4, *-short-3.mkv.
+        if filters.filename_suffix:
+            conditions.append("v.filename LIKE ?")
+            params.append(f"%{filters.filename_suffix}%.%")
 
         # Year filters
         if filters.year:
@@ -382,6 +389,8 @@ def parse_filter_string(filter_str: str) -> QueryFilter:
 
         if key == "title":
             filters.title = value
+        elif key == "suffix":
+            filters.filename_suffix = value
         elif key == "year":
             if value.startswith(">"):
                 filters.year_min = int(value[1:])

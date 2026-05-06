@@ -148,6 +148,7 @@ vlc-plylst search -q "genre:horror" --json
 | Filter | Example | Description |
 |--------|---------|-------------|
 | `title:` | `title:inception` | Search by title |
+| `suffix:` | `suffix:-trailer`, `suffix:-short-` | Filename pattern before extension (matches all extensions) |
 | `year:` | `year:2024`, `year:>2020`, `year:2020-2024` | Exact, min, or range |
 | `rating:` | `rating:>7` or `rating:<5` | Minimum/maximum rating |
 | `runtime:` | `runtime:<120` | Runtime in minutes |
