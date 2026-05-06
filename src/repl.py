@@ -149,6 +149,7 @@ HELP_TEXT = """
   playlist list            List saved playlists
   playlist create <name> <filter>   Create smart playlist
   playlist export <id> <file>       Export saved playlist
+  playlist delete <id>              Delete saved playlist
 
 [cyan]Other Commands:[/cyan]
   stats               Show library statistics
@@ -234,7 +235,7 @@ class MediaREPL:
         """Playlist management commands."""
         parts = shlex.split(args) if args else []
         if not parts:
-            console.print("[yellow]Usage: playlist <list|create|export> ...[/yellow]")
+            console.print("[yellow]Usage: playlist <list|create|export|delete> ...[/yellow]")
             return
 
         subcmd = parts[0].lower()
@@ -279,6 +280,24 @@ class MediaREPL:
             fmt = "xspf" if output_file.endswith(".xspf") else "m3u8"
             self.playlist_gen.export_smart_playlist(pid, output_file, format=fmt)
             console.print(f"[green]Exported playlist to {output_file}[/green]")
+
+        elif subcmd == "delete":
+            if len(parts) < 2:
+                console.print("[yellow]Usage: playlist delete <id>[/yellow]")
+                return
+            try:
+                pid = int(parts[1])
+            except ValueError:
+                console.print("[red]Invalid playlist ID[/red]")
+                return
+            row = self.db.fetchone(
+                "SELECT name FROM playlists WHERE playlist_id = ?", (pid,)
+            )
+            if not row:
+                console.print(f"[red]Playlist {pid} not found[/red]")
+                return
+            self.db.delete_playlist(pid)
+            console.print(f"[green]Deleted playlist '{row['name']}' (ID: {pid})[/green]")
 
         else:
             console.print(f"[red]Unknown playlist command: {subcmd}[/red]")
