@@ -141,8 +141,15 @@ class PlaylistGenerator:
             title = self._get_display_title(row)
             duration_ms = (row["runtime"] or 0) * 60 * 1000
 
-            # Convert path to file:// URI
-            file_uri = "file://" + quote(full_path, safe="/")
+            # If full_path already has a URI scheme (smb://, http://, ftp://, ...),
+            # preserve it. Otherwise wrap with file://. In both cases, percent-
+            # encode only characters that would actually break the URI — keep
+            # '/', ':' (Windows drives, host:port), and '@' (user@host) intact.
+            if "://" in full_path:
+                scheme, _, rest = full_path.partition("://")
+                file_uri = f"{scheme}://{quote(rest, safe='/:@')}"
+            else:
+                file_uri = "file://" + quote(full_path, safe="/:@")
 
             lines.append("    <track>")
             lines.append(f"      <location>{file_uri}</location>")
