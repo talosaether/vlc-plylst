@@ -867,6 +867,35 @@ def playlist_export(
     db.close()
 
 
+@playlist.command("delete")
+@click.argument("playlist_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def playlist_delete(ctx: click.Context, playlist_id: int, yes: bool) -> None:
+    """Delete a saved playlist (DB only — exported files are not removed)."""
+    db = get_db(ctx.obj["db_path"])
+
+    row = db.fetchone(
+        "SELECT name, is_smart, smart_query FROM playlists WHERE playlist_id = ?",
+        (playlist_id,),
+    )
+    if not row:
+        console.print(f"[red]Playlist {playlist_id} not found[/red]")
+        db.close()
+        sys.exit(1)
+
+    label = f"'{row['name']}' (ID: {playlist_id})"
+    if not yes:
+        if not click.confirm(f"Delete playlist {label}?"):
+            console.print("[dim]Cancelled[/dim]")
+            db.close()
+            return
+
+    db.delete_playlist(playlist_id)
+    console.print(f"[green]Deleted playlist {label}[/green]")
+    db.close()
+
+
 @cli.command()
 @click.pass_context
 def repl(ctx: click.Context) -> None:

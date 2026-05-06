@@ -617,6 +617,14 @@ class Database:
         """List all playlists."""
         return self.fetchall("SELECT * FROM playlists ORDER BY updated_at DESC")
 
+    def delete_playlist(self, playlist_id: int) -> bool:
+        """Delete a playlist and its items. Returns False if no such playlist."""
+        cursor = self.execute(
+            "DELETE FROM playlists WHERE playlist_id = ?", (playlist_id,)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
     # =========================================================================
     # QUERY HELPERS
     # =========================================================================

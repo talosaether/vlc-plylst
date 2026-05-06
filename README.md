@@ -191,6 +191,10 @@ vlc-plylst playlist list
 
 # Export saved playlist
 vlc-plylst playlist export 1 best2024.m3u8
+
+# Delete a saved playlist (DB only — any exported .m3u8/.xspf files stay put)
+vlc-plylst playlist delete 1
+vlc-plylst playlist delete 1 -y     # skip confirmation
 ```
 
 ### Inspect a single file
