@@ -198,6 +198,16 @@ Four rewrites cover the common cases:
 
 `--strip-prefix`, `--prepend-path`, and `--path-suffix` compose; `--path-prefix` can't be combined with `--strip-prefix` or `--prepend-path`.
 
+Replacing the human title with the resolved path (so an external lookup service can grab the VLC "now playing" title and use it as a path-keyed lookup):
+
+```bash
+vlc-plylst export movies.m3u8 -q "rating:>8" \
+  --strip-prefix /mnt --prepend-path smb://nas \
+  --title-as-path
+```
+
+Each track's title becomes the same string written to the location field, after all rewrites are applied.
+
 Building a "shorts" playlist of `*-short-1.ext` companion files from your indexed library:
 
 ```bash
