@@ -85,6 +85,7 @@ class PlaylistGenerator:
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
         path_suffix: str | None = None,
+        title_as_path: bool = False,
         include_metadata: bool = True,
     ) -> str:
         """
@@ -123,7 +124,7 @@ class PlaylistGenerator:
 
             if include_metadata:
                 duration = self._format_duration(row["runtime"])
-                title = self._get_display_title(row)
+                title = full_path if title_as_path else self._get_display_title(row)
                 lines.append(f"#EXTINF:{duration},{title}")
 
             lines.append(full_path)
@@ -139,6 +140,7 @@ class PlaylistGenerator:
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
         path_suffix: str | None = None,
+        title_as_path: bool = False,
         playlist_title: str = "VLC Playlist",
     ) -> str:
         """Generate XSPF (XML) playlist content. See generate_m3u8 for the
@@ -170,7 +172,7 @@ class PlaylistGenerator:
                 row["full_path"], row["relative_path"], path_prefix, prepend_path, strip_prefix, path_suffix
             )
 
-            title = self._get_display_title(row)
+            title = full_path if title_as_path else self._get_display_title(row)
             duration_ms = (row["runtime"] or 0) * 60 * 1000
 
             # If full_path already has a URI scheme (smb://, http://, ftp://, ...),
@@ -221,6 +223,7 @@ class PlaylistGenerator:
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
         path_suffix: str | None = None,
+        title_as_path: bool = False,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
@@ -244,6 +247,7 @@ class PlaylistGenerator:
                 prepend_path=prepend_path,
                 strip_prefix=strip_prefix,
                 path_suffix=path_suffix,
+                title_as_path=title_as_path,
                 playlist_title=output_path.stem,
             )
         else:
@@ -255,6 +259,7 @@ class PlaylistGenerator:
                 prepend_path=prepend_path,
                 strip_prefix=strip_prefix,
                 path_suffix=path_suffix,
+                title_as_path=title_as_path,
             )
 
         output_path.write_text(content, encoding="utf-8")
@@ -323,6 +328,7 @@ class PlaylistGenerator:
         prepend_path: str | None = None,
         strip_prefix: str | None = None,
         path_suffix: str | None = None,
+        title_as_path: bool = False,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
@@ -355,5 +361,6 @@ class PlaylistGenerator:
             prepend_path=prepend_path,
             strip_prefix=strip_prefix,
             path_suffix=path_suffix,
+            title_as_path=title_as_path,
             format=format,
         )
