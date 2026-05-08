@@ -217,15 +217,31 @@ class Database:
     def update_nfo_info(
         self, file_id: int, nfo_path: str, nfo_mtime: str
     ) -> None:
-        """Update NFO file information."""
-        now = datetime.now().isoformat()
+        """Record discovery of an NFO file (path + mtime only).
+
+        nfo_parsed_at is owned by the parser and only re-set when metadata is
+        actually extracted; this method clears it whenever the incoming mtime
+        differs from the stored one so a touched NFO is immediately flagged
+        for re-parse on the next refresh pass.
+        """
         self.execute(
             """
             UPDATE media_files
-            SET nfo_path = ?, nfo_mtime = ?, nfo_parsed_at = ?
+            SET nfo_path = ?,
+                nfo_mtime = ?,
+                nfo_parsed_at = CASE WHEN nfo_mtime IS NOT ? THEN NULL ELSE nfo_parsed_at END
             WHERE file_id = ?
             """,
-            (nfo_path, nfo_mtime, now, file_id),
+            (nfo_path, nfo_mtime, nfo_mtime, file_id),
+        )
+        self.conn.commit()
+
+    def mark_nfo_parsed(self, file_id: int) -> None:
+        """Stamp nfo_parsed_at to now after a successful NFO parse."""
+        now = datetime.now().isoformat()
+        self.execute(
+            "UPDATE media_files SET nfo_parsed_at = ? WHERE file_id = ?",
+            (now, file_id),
         )
         self.conn.commit()
 

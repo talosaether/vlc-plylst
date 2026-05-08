@@ -572,4 +572,5 @@ class NFOParser:
         """Parse NFO file and save to database."""
         nfo_data = self.parse_file(nfo_path)
         self.save_to_db(file_id, nfo_data)
+        self.db.mark_nfo_parsed(file_id)
         return nfo_data
