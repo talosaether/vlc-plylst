@@ -208,6 +208,14 @@ vlc-plylst export movies.m3u8 -q "rating:>8" \
 
 Each track's title becomes the same string written to the location field, after all rewrites are applied.
 
+#### Verifying NFO freshness at export time
+
+`--verify` stats the NFO for each candidate row and re-parses any whose mtime has diverged from what's in the DB. With `-q` (or a smart playlist), the filter is then re-evaluated so rows that no longer match drop out — useful when you want a freshly accurate playlist without doing a full library refresh first. It can only prune the candidate set, not pull in newly-matching rows that weren't selected; for that you still need `vlc-plylst refresh`.
+
+```bash
+vlc-plylst export action.xspf -q "genre:action rating:>7" -n 100 --verify
+```
+
 Building a "shorts" playlist of `*-short-1.ext` companion files from your indexed library:
 
 ```bash

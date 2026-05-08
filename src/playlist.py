@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -10,6 +12,50 @@ if TYPE_CHECKING:
     import sqlite3
     from .db import Database
     from .query import QueryFilter
+
+
+def verify_nfo_freshness(db: Database, file_ids: list[int]) -> tuple[int, int]:
+    """Stat each file's NFO and re-parse any whose on-disk mtime has
+    diverged from the stored nfo_mtime. Returns (checked, reparsed).
+
+    Used by export --verify so the playlist about to be written reflects
+    the current state of NFO metadata for the rows being emitted.
+    """
+    if not file_ids:
+        return (0, 0)
+
+    from .nfo_parser import NFOParser
+
+    placeholders = ",".join("?" * len(file_ids))
+    rows = db.fetchall(
+        f"""
+        SELECT mf.file_id, mf.nfo_path, mf.nfo_mtime, r.root_path
+        FROM media_files mf
+        JOIN roots r ON mf.root_id = r.root_id
+        WHERE mf.file_id IN ({placeholders})
+          AND mf.nfo_path IS NOT NULL
+          AND mf.is_missing = 0
+        """,
+        list(file_ids),
+    )
+
+    parser = NFOParser(db)
+    reparsed = 0
+    for row in rows:
+        nfo_full = Path(row["root_path"]) / row["nfo_path"]
+        try:
+            disk_mtime = datetime.fromtimestamp(os.path.getmtime(nfo_full)).isoformat()
+        except OSError:
+            continue
+        if disk_mtime != row["nfo_mtime"]:
+            db.update_nfo_info(row["file_id"], row["nfo_path"], disk_mtime)
+            try:
+                parser.parse_and_save(row["file_id"], nfo_full)
+                reparsed += 1
+            except Exception:
+                pass
+
+    return (len(rows), reparsed)
 
 
 class PlaylistGenerator:
@@ -329,11 +375,17 @@ class PlaylistGenerator:
         strip_prefix: str | None = None,
         path_suffix: str | None = None,
         title_as_path: bool = False,
+        verify: bool = False,
         format: str = "m3u8",
         limit: int | None = None,
     ) -> tuple[Path, int]:
         """Export a smart playlist by re-running its query (or load static
-        items). See generate_m3u8 for path-rewrite option semantics."""
+        items). See generate_m3u8 for path-rewrite option semantics.
+
+        verify=True stats each candidate row's NFO and re-parses any whose
+        mtime has changed; for smart playlists the filter is then re-evaluated
+        so rows that no longer match fall out of the output.
+        """
         from .query import QueryBuilder, parse_filter_string
 
         playlist = self.db.fetchone(
@@ -349,10 +401,18 @@ class PlaylistGenerator:
                 filters.limit = limit
             query_builder = QueryBuilder(self.db)
             results = query_builder.execute(filters)
+            if verify:
+                verify_nfo_freshness(self.db, [r["file_id"] for r in results])
+                results = query_builder.execute(filters)
         else:
             results = self.db.get_playlist_items(playlist_id)
             if limit:
                 results = results[:limit]
+            if verify:
+                verify_nfo_freshness(self.db, [r["file_id"] for r in results])
+                results = self.db.get_playlist_items(playlist_id)
+                if limit:
+                    results = results[:limit]
 
         return self.save_playlist(
             output_path=output_path,

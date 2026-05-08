@@ -15,7 +15,7 @@ from .db import Database, DEFAULT_DB_PATH
 from .scanner import Scanner, ScanProgress
 from .nfo_parser import NFOParser
 from .query import QueryBuilder, QueryFilter, SortOrder, parse_filter_string
-from .playlist import PlaylistGenerator
+from .playlist import PlaylistGenerator, verify_nfo_freshness
 
 console = Console()
 
@@ -299,6 +299,7 @@ def search(
 @click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
 @click.option("--path-suffix", help="Insert this string before the file extension (e.g. -short-1)")
 @click.option("--title-as-path", is_flag=True, help="Use the resolved path as the track title (after all path rewrites)")
+@click.option("--verify", is_flag=True, help="Stat each row's NFO and re-parse any that have changed; drops rows that no longer match (-q only)")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default="m3u8")
 @click.option("--limit", "-n", type=int, default=500, help="Maximum items in playlist (default: 500)")
 @click.pass_context
@@ -313,6 +314,7 @@ def export(
     prepend_path: str | None,
     path_suffix: str | None,
     title_as_path: bool,
+    verify: bool,
     format: str,
     limit: int,
 ) -> None:
@@ -327,6 +329,8 @@ def export(
     query_results = None
 
     total_matches: int | None = None
+    query_builder: QueryBuilder | None = None
+    filters = None
     if ids:
         file_ids = [int(i.strip()) for i in ids.split(",")][:limit]
     elif query:
@@ -341,6 +345,27 @@ def export(
         console.print("[red]Must specify --query, --ids, or --playlist-id[/red]")
         db.close()
         sys.exit(1)
+
+    if verify:
+        if file_ids is not None:
+            candidate_ids = file_ids
+        elif query_results is not None:
+            candidate_ids = [r["file_id"] for r in query_results]
+        else:  # playlist_id
+            items = db.get_playlist_items(playlist_id)
+            if limit:
+                items = items[:limit]
+            candidate_ids = [r["file_id"] for r in items]
+
+        checked, reparsed = verify_nfo_freshness(db, candidate_ids)
+        if reparsed:
+            console.print(f"[dim]Verified {checked} NFOs; re-parsed {reparsed} stale[/dim]")
+        elif checked:
+            console.print(f"[dim]Verified {checked} NFOs; all up-to-date[/dim]")
+
+        if query and query_builder is not None and filters is not None:
+            query_results = query_builder.execute(filters)
+            total_matches = query_builder.count(filters)
 
     output_path, item_count = generator.save_playlist(
         output_path=output,
@@ -864,6 +889,7 @@ def roots(ctx: click.Context) -> None:
 @click.option("--prepend-path", help="Prepend this prefix to the (possibly stripped) full path")
 @click.option("--path-suffix", help="Insert this string before the file extension (e.g. -short-1)")
 @click.option("--title-as-path", is_flag=True, help="Use the resolved path as the track title (after all path rewrites)")
+@click.option("--verify", is_flag=True, help="Stat each row's NFO and re-parse any that have changed; smart-playlist filters are then re-evaluated")
 @click.option("--format", "-f", type=click.Choice(["m3u8", "xspf"]), default=None)
 @click.option("--limit", "-n", type=int, help="Maximum items to include")
 @click.pass_context
@@ -876,6 +902,7 @@ def playlist_export(
     prepend_path: str | None,
     path_suffix: str | None,
     title_as_path: bool,
+    verify: bool,
     format: str | None,
     limit: int | None,
 ) -> None:
@@ -908,6 +935,7 @@ def playlist_export(
             strip_prefix=strip_prefix,
             path_suffix=path_suffix,
             title_as_path=title_as_path,
+            verify=verify,
             format=fmt,
             limit=limit,
         )
